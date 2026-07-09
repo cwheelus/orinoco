@@ -10,9 +10,7 @@ The application visualizes network features including **Entropy**, **Convolution
 
 ## Application Demo
 
-<!-- Replace with actual demo recording -->
-
-![Project Orinoco Demo](docs/orinoco-demo.gif)
+▶️ **Demo Video:** [Watch Orinoco MVP Walkthrough](docs/video/orinoco-demo.mp4)
 
 Example walkthrough:
 
@@ -25,19 +23,13 @@ Example walkthrough:
 
 ## Screenshots
 
-<!-- Replace placeholders with actual screenshots -->
-
 ### Main Visualization View
 
-![Main Visualization](docs/screenshots/main-view.png)
+![Main Visualization](docs/images/main.png)
 
 ### Point Inspection HUD
 
-![Point Inspection HUD](docs/screenshots/hud-view.png)
-
-### Dynamic Pivot System
-
-![Pivot Navigation](docs/screenshots/pivot-view.png)
+![Point Inspection HUD](docs/images/data_info.png)
 
 ---
 
@@ -134,6 +126,13 @@ This architecture allows the visualization engine to evolve as new threat datase
 
 ```text
 orinoco/
+├── docs/
+│   ├── images/
+│   │   ├── main.png
+│   │   └── data_info.png
+│   └── video/
+│       └── orinoco-demo.mp4
+│
 ├── src/
 │   ├── components/
 │   │   ├── Axes.tsx
@@ -335,8 +334,8 @@ The rendering architecture separates the visualization layer from the data sourc
 ## Clone Repository
 
 ```bash
-git clone https://github.com/<username>/orinoco.git
-cd orinoco
+git clone https://github.com/<username>/orinoco-visualizer.git
+cd orinoco-visualizer
 ```
 
 ## Install Dependencies
