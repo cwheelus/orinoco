@@ -17,11 +17,24 @@ import { Axes } from "./components/Axes";
  * - UI Layer: HTML/Tailwind over the 3D Canvas (zIndex: 10)
  * - 3D Layer: React Three Fiber (R3F) for WebGL rendering
  * - State: Zustand store (useStore) for cross-component sync (pivoting, hovering)
+ *
+ * IN PLAIN TERMS:
+ * This file builds the entire screen the user sees. It has two layers stacked
+ * on top of each other: a flat 2D layer (the on-screen text, buttons, and info
+ * panels) and a 3D layer underneath it (the actual navigable graph/scene).
+ * The two layers don't talk to each other directly — instead they both read
+ * from a shared "notebook" (the Zustand store) so that, for example, hovering
+ * over a 3D point can update the 2D info panel without the two pieces of code
+ * needing to know about each other.
  */
 function App() {
   // Global State: Coordinates for the focal center of the 3D world
+  // "pivot" is the point the camera currently orbits around. It starts at
+  // the very center (0,0,0) and can change if the user clicks a data point.
   const pivot = useStore((state) => state.pivot);
   // Global State: The data object currently under the user's cursor
+  // This is null when nothing is being hovered, and becomes a real data
+  // point object the moment the mouse moves over one in the 3D scene.
   const hoveredPoint = useStore((state) => state.hoveredPoint);
 
   return (
@@ -30,6 +43,11 @@ function App() {
           1. HUD OVERLAY (2D)
           'pointer-events-none' is critical here: it allows clicks to "pass through" 
           the UI layer into the 3D Canvas unless specifically overridden.
+
+          IN PLAIN TERMS: this is the flat, on-screen layer with text and panels.
+          Setting it to ignore clicks means the user can still click through it
+          to interact with the 3D scene underneath, even though this layer is
+          visually on top.
       */}
       <div className="absolute inset-0 pointer-events-none p-6 flex flex-col justify-between z-10">
         {/* Branding & Status Header */}
@@ -46,6 +64,11 @@ function App() {
         </div>
 
         {/* Dynamic Point Inspector: Appears only when user hovers over a 3D node */}
+        {/* 
+            IN PLAIN TERMS: this box shows details about whatever data point
+            the mouse is currently over. If nothing is being hovered, it shows
+            a placeholder message instead (see the "else" branch below).
+        */}
         <div className="w-72">
           {hoveredPoint ? (
             <div className="p-4 bg-slate-900/80 backdrop-blur-md border-l-2 border-blue-500 ring-1 ring-white/10 shadow-2xl transition-all">
@@ -94,6 +117,7 @@ function App() {
               </div>
             </div>
           ) : (
+            // Placeholder shown when the user isn't hovering over any point
             <div className="p-4 bg-slate-900/40 border-l-2 border-white/10 italic text-white/20 text-[10px] w-fit">
               Secure Link Established // Hover nodes for analysis
             </div>
@@ -101,6 +125,8 @@ function App() {
         </div>
 
         {/* Bottom HUD: Control Guide & Classification Legend */}
+        {/* IN PLAIN TERMS: this is the on-screen cheat sheet showing the
+            keyboard controls and what each data point color means. */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
           {/* Visual Keyboard Guide (Improves UX for non-gamers) */}
           <div className="bg-white/5 p-3 backdrop-blur-sm border border-white/10 rounded flex gap-4">
@@ -162,9 +188,13 @@ function App() {
       {/* 
           2. THE 3D CANVAS (RENDER ENGINE)
           'shadows' enabled for high fidelity (optional).
+
+          IN PLAIN TERMS: everything inside <Canvas> is the actual 3D scene —
+          this is where the graph, the data points, and the camera all live.
       */}
       <Canvas shadows>
         {/* Default Scene Perspective: [15,15,15] gives a good isometric entry view */}
+        {/* This sets where the camera starts before the user moves it. */}
         <PerspectiveCamera makeDefault position={[20, 20, 20]} />
 
         {/* Lighting: Balanced to ensure glow (emissive) points aren't washed out */}
@@ -172,6 +202,8 @@ function App() {
         <pointLight position={[10, 10, 10]} intensity={1} />
 
         {/* Navigational Grid: Visual reference for the Cartesian plane */}
+        {/* IN PLAIN TERMS: this draws the faint floor grid so the user has
+            some sense of scale and orientation while moving around. */}
         <Grid
           infiniteGrid
           sectionSize={5}
@@ -185,6 +217,10 @@ function App() {
             CameraRig: Custom keyboard logic for WASD
             PointCloud: Mapped 3D nodes from dataset
             Axes: 3D labels (Billboarded to stay readable)
+
+            IN PLAIN TERMS: these three pieces do the real work — one handles
+            keyboard movement, one draws all the data points, and one draws
+            the axis labels around the scene.
         */}
         <CameraRig />
         <PointCloud />
@@ -200,6 +236,10 @@ function App() {
             TACTICAL PIVOT RETICLE:
             Visual feedback identifying the 'center' of the world.
             Uses Billboard to remain visible regardless of camera angle.
+
+            IN PLAIN TERMS: this is the glowing blue ring/diamond marker that
+            shows exactly where the camera is currently centered on/orbiting
+            around. It always faces the camera so it's visible from any angle.
         */}
         <group position={pivot}>
           <Billboard>
