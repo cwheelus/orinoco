@@ -342,8 +342,6 @@ The rendering architecture separates the visualization layer from the data sourc
 
 This project was developed and tested with **Node v24.13.1** and **npm 11.10.0**.
 
-> **Why 22.12+ and not just "20+":** the toolchain (Vite, oxlint, `@vitejs/plugin-react`) supports `^20.19.0 || >=22.12.0`, but `camera-controls` — a direct dependency of `@react-three/drei` — requires `>=22.0.0`. Combined, the only Node line that satisfies every dependency is **22.12.0 or later**. Node 20.x (even 20.19+) and Node 21.x are not guaranteed to work.
-
 ### Installing Node.js
 
 - **Windows**: [Official installer](https://nodejs.org/) or [nvm-windows](https://github.com/coreybutler/nvm-windows)
