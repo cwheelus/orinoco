@@ -10,7 +10,8 @@ The application visualizes network features including **Entropy**, **Convolution
 
 ## Application Demo
 
-▶️ **Demo Video:** [Watch Orinoco MVP Walkthrough](docs/video/orinoco-demo.mp4)
+▶️ **Demo Videos:** 
+[Watch Orinoco MVP Walkthrough 7/8/2026](https://youtu.be/Gr2Yjx_JF_4)
 
 Example walkthrough:
 
@@ -331,11 +332,38 @@ The rendering architecture separates the visualization layer from the data sourc
 
 # 📥 Installation & Setup
 
-## Clone Repository
+## Prerequisites
+
+| Tool    | Version                                | Notes                                          |
+| ------- | ---------------------------------------- | ------------------------------------------------ |
+| Node.js | v22.12.0 or newer (v24.x tested)         | Required by `@react-three/drei`'s `camera-controls` dependency; see note below |
+| npm     | v10 or newer (bundled with Node)         | Verify with `npm -v`                            |
+| Git     | any recent version                       | Required to clone the repo                      |
+
+This project was developed and tested with **Node v24.13.1** and **npm 11.10.0**.
+
+> **Why 22.12+ and not just "20+":** the toolchain (Vite, oxlint, `@vitejs/plugin-react`) supports `^20.19.0 || >=22.12.0`, but `camera-controls` — a direct dependency of `@react-three/drei` — requires `>=22.0.0`. Combined, the only Node line that satisfies every dependency is **22.12.0 or later**. Node 20.x (even 20.19+) and Node 21.x are not guaranteed to work.
+
+### Installing Node.js
+
+- **Windows**: [Official installer](https://nodejs.org/) or [nvm-windows](https://github.com/coreybutler/nvm-windows)
+- **macOS**: [nvm](https://github.com/nvm-sh/nvm) (`brew install nvm`) or Homebrew (`brew install node`)
+- **Linux**: [nvm](https://github.com/nvm-sh/nvm) or your distro's package manager
+
+After installing, confirm your versions match the table above:
 
 ```bash
-git clone https://github.com/<username>/orinoco-visualizer.git
-cd orinoco-visualizer
+node -v
+npm -v
+```
+
+## Clone Repository
+
+The following commands are identical across PowerShell, Command Prompt, WSL/Git Bash, and macOS/Linux terminals.
+
+```bash
+git clone https://github.com/cwheelus/orinoco.git
+cd orinoco
 ```
 
 ## Install Dependencies
@@ -350,11 +378,36 @@ npm install
 npm run dev
 ```
 
+By default this serves the app at [http://localhost:5173](http://localhost:5173) (Vite's default dev port).
+
+## Build for Production
+
+```bash
+npm run build
+```
+
 ## Run Linter
 
 ```bash
 npm run lint
 ```
+
+## Key Dependency Versions
+
+Pulled directly from [package.json](package.json)
+
+| Package                   | Version   |
+| -------------------------- | --------- |
+| react / react-dom          | ^19.2.7   |
+| typescript                 | ~6.0.2    |
+| vite                       | ^8.1.1    |
+| three                      | ^0.185.1  |
+| @react-three/fiber          | ^9.6.1    |
+| @react-three/drei           | ^10.7.7   |
+| zustand                    | ^5.0.14   |
+| tailwindcss                | ^4.3.2    |
+| papaparse                  | ^5.5.4    |
+| oxlint (dev)                | ^1.71.0   |
 
 ---
 
