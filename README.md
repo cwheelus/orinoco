@@ -4,13 +4,15 @@ A browser-native 3D visualization MVP built for Sentient Solutions. Project Orin
 
 The application visualizes network features including **Entropy**, **Convolution**, and **WHT-scores** within a 3D Cartesian coordinate system. Analysts can navigate the environment, inspect individual data points, and dynamically adjust their exploration viewpoint through an interactive pivot system.
 
+> Throughout this document, **Entropy**, **Convolution**, and **WHT-score** refer to the conceptual features being visualized. `in-entropy`, `in-conv`, and `in-WHT-score` refer to the corresponding JSON field names and axis mappings.
+
 ---
 
-# 🎥 Preview
+# Preview
 
 ## Application Demo
 
-▶️ **Demo Videos:** 
+**Demo Videos:**
 [Watch Orinoco MVP Walkthrough 7/8/2026](https://youtu.be/Gr2Yjx_JF_4)
 
 Example walkthrough:
@@ -34,18 +36,20 @@ Example walkthrough:
 
 ---
 
-# 🚀 Key Features
+# Key Features
 
 ## 3D Cartesian Plot Visualization
 
 Project Orinoco renders high-dimensional network features in an interactive WebGL environment using Three.js and React Three Fiber.
 
+The plotting volume is an open-face Cartesian box spanning -2 to 2 on each axis, built in `CartesianGrid.tsx`. Tick marks, numeric labels, and axis titles are rendered separately in `Axes.tsx`.
+
 Data dimensions:
 
 | Feature      | Axis |
 | ------------ | ---- |
-| in-entropy   | X    |
-| in-conv      | Y    |
+| in-entropy   | Y    |
+| in-conv      | X    |
 | in-WHT-score | Z    |
 
 ---
@@ -73,7 +77,7 @@ Users can select any data node as an investigation reference point.
 When a node is selected:
 
 1. The global pivot coordinate updates
-2. The camera target changes to the selected location
+2. The camera navigation pivot updates to the selected location
 3. The tactical reticle identifies the active pivot
 4. Analysts can explore nearby data relationships
 
@@ -106,7 +110,7 @@ Current classification visualization:
 
 ---
 
-# 🏗️ Architecture
+# Architecture
 
 Project Orinoco separates rendering, application state, and interface responsibilities.
 
@@ -120,6 +124,28 @@ Project Orinoco follows a separation-of-concerns architecture:
 - Data sources remain independent from rendering logic
 
 This architecture allows the visualization engine to evolve as new threat datasets become available.
+
+### Two-layer rendering model
+
+The application renders two separate layers stacked on top of each other: a flat 2D HTML/Tailwind layer (branding, HUD panels, legends) and a 3D `<Canvas>` layer beneath it (the navigable scene). These are two independent React trees — the HTML layer isn't a child of the Canvas, and neither has a direct reference to the other.
+
+The 2D layer uses `pointer-events-none` so mouse clicks pass through it into the 3D scene, except where a specific HUD element opts back in. Because the two trees can't pass props to each other directly, they communicate exclusively through the shared Zustand store: a pointer event inside the Canvas (e.g. hovering a data point in `PointCloud.tsx`) updates the store, and the HTML layer (in `App.tsx`) reacts to that same store value to update the HUD — with neither component needing to know the other exists.
+
+### Why Zustand for shared state
+
+Given the two-layer model above, some mechanism is needed to synchronize state between the 3D scene and the 2D HUD. Zustand was chosen over React Context or Redux for a few reasons:
+
+- No `<Provider>` wrapper required — any component calls the `useStore` hook directly
+- Components subscribe to only the specific state slice they need (e.g. `state => state.pivot`), so a change to one field doesn't cause unrelated components to re-render
+- Minimal boilerplate compared to Redux's actions/reducers/dispatch pattern, appropriate for the relatively small amount of shared state this application currently needs (`pivot`, `hoveredPoint`)
+
+### Why a custom Cartesian grid instead of a built-in helper
+
+`@react-three/drei` ships a generic `Grid` helper — a flat, infinite floor-plane grid intended for general 3D scene reference (e.g. a game editor's floor). It doesn't support bounded dimensions, selectable wall faces, or tick marks/axis labels tied to specific data ranges.
+
+The spec calls for a fixed -2 to 2 box with visible walls on specific sides only (an "open-face" box, per analyst feedback that a fully enclosed cube obscures the view), plus numbered ticks at 0.5 intervals synced to axis name labels. No configuration of the drei helper could produce this — so `CartesianGrid.tsx` and `Axes.tsx` were built as custom components instead, giving full control over bounds, open/closed faces, and tick/label placement.
+
+The Cartesian plotting volume provides a normalized coordinate space for visualization. Individual datasets may undergo transformation into this plotting space before rendering.
 
 ---
 
@@ -137,7 +163,10 @@ orinoco/
 ├── src/
 │   ├── components/
 │   │   ├── Axes.tsx
-│   │   │   └── 3D axis labels and spatial references
+│   │   │   └── Tick marks, numeric labels, and axis titles
+│   │   │
+│   │   ├── CartesianGrid.tsx
+│   │   │   └── Open-face Cartesian plotting volume (-2 to 2)
 │   │   │
 │   │   ├── CameraRig.tsx
 │   │   │   └── WASD navigation and camera movement logic
@@ -167,7 +196,7 @@ orinoco/
 
 ---
 
-# 🔄 Interaction Flow
+# Interaction Flow
 
 The application follows this interaction model:
 
@@ -193,7 +222,7 @@ Example:
 
 ---
 
-# 🛠️ Tech Stack
+# Tech Stack
 
 ## Framework & Build
 
@@ -238,7 +267,6 @@ Provides reusable Three.js helpers:
 
 - OrbitControls
 - Billboard labels
-- Grid helpers
 - Text components
 
 ---
@@ -290,9 +318,9 @@ Icon library used for interface elements.
 
 ---
 
-# 📊 Data Configuration
+# Data Configuration
 
-The MVP currently loads visualization data from a local JSON source.
+The current MVP loads visualization data from a local JSON file. The rendering architecture intentionally separates the visualization engine from the data source so future datasets can be introduced with minimal changes.
 
 The visualization expects each data point to contain a unique identifier, three-dimensional feature values, and a classification label.
 
@@ -311,8 +339,8 @@ Example schema:
 Data mapping:
 
 ```text
-in-entropy      → X axis
-in-conv         → Y axis
+in-entropy      → Y axis
+in-conv         → X axis
 in-WHT-score    → Z axis
 class           → Visualization category
 uid             → Point identifier displayed in the HUD
@@ -330,15 +358,15 @@ The rendering architecture separates the visualization layer from the data sourc
 
 ---
 
-# 📥 Installation & Setup
+# Installation & Setup
 
 ## Prerequisites
 
-| Tool    | Version                                | Notes                                          |
-| ------- | ---------------------------------------- | ------------------------------------------------ |
-| Node.js | v22.12.0 or newer (v24.x tested)         | Required by `@react-three/drei`'s `camera-controls` dependency; see note below |
-| npm     | v10 or newer (bundled with Node)         | Verify with `npm -v`                            |
-| Git     | any recent version                       | Required to clone the repo                      |
+| Tool    | Version                          | Notes                                                                          |
+| ------- | -------------------------------- | ------------------------------------------------------------------------------ |
+| Node.js | v22.12.0 or newer (v24.x tested) | Required by `@react-three/drei`'s `camera-controls` dependency; see note below |
+| npm     | v10 or newer (bundled with Node) | Verify with `npm -v`                                                           |
+| Git     | any recent version               | Required to clone the repo                                                     |
 
 This project was developed and tested with **Node v24.13.1** and **npm 11.10.0**.
 
@@ -394,22 +422,22 @@ npm run lint
 
 Pulled directly from [package.json](package.json)
 
-| Package                   | Version   |
-| -------------------------- | --------- |
-| react / react-dom          | ^19.2.7   |
-| typescript                 | ~6.0.2    |
-| vite                       | ^8.1.1    |
-| three                      | ^0.185.1  |
-| @react-three/fiber          | ^9.6.1    |
-| @react-three/drei           | ^10.7.7   |
-| zustand                    | ^5.0.14   |
-| tailwindcss                | ^4.3.2    |
-| papaparse                  | ^5.5.4    |
-| oxlint (dev)                | ^1.71.0   |
+| Package            | Version  |
+| ------------------ | -------- |
+| react / react-dom  | ^19.2.7  |
+| typescript         | ~6.0.2   |
+| vite               | ^8.1.1   |
+| three              | ^0.185.1 |
+| @react-three/fiber | ^9.6.1   |
+| @react-three/drei  | ^10.7.7  |
+| zustand            | ^5.0.14  |
+| tailwindcss        | ^4.3.2   |
+| papaparse          | ^5.5.4   |
+| oxlint (dev)       | ^1.71.0  |
 
 ---
 
-# 🔮 Future Enhancements
+# Future Enhancements
 
 Potential future improvements:
 
@@ -423,7 +451,7 @@ Potential future improvements:
 
 ---
 
-# ✅ Current Development Status
+# Current Development Status
 
 Project Orinoco is a functional MVP demonstrating:
 
@@ -436,7 +464,7 @@ Project Orinoco is a functional MVP demonstrating:
 
 ---
 
-# 👥 Project Team
+# Project Team
 
 ©2026 Sentient Solutions
 
