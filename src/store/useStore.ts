@@ -1,8 +1,9 @@
 import { create } from "zustand";
 
-// Shape of a single data point loaded from data.json.
-// IN PLAIN TERMS: this describes what information exists for each dot
-// in the 3D scene — its ID, its position, and what category it belongs to.
+// Shape of a single data point loaded from data.json. Note: current
+// fields (x/y/z/className) don't match the spec's actual schema
+// (in-entropy/in-conv/in-WHT-score/class) — this is placeholder test
+// data pending issue #2's data normalization work.
 interface DataPoint {
   uid: string;
   x: number;
@@ -11,28 +12,35 @@ interface DataPoint {
   className: string;
 }
 
-// Shape of the entire shared state store.
-// IN PLAIN TERMS: this is the "notebook" that different parts of the app
-// (the 3D scene and the 2D HUD) both read from and write to, so they can
-// stay in sync without talking to each other directly.
+// Shape of the entire shared state store. This is the single source of
+// truth that both the 3D scene (inside <Canvas>) and the 2D HUD
+// (outside <Canvas>, in App.tsx) read from — since those are separate
+// React trees that don't otherwise have a way to pass props to each
+// other directly.
 interface VisualizerState {
-  // The point in 3D space the camera currently orbits around and looks at.
+  // The point in 3D space the camera currently orbits around and looks
+  // at. Read by CameraRig.tsx (for WASD movement math) and by
+  // OrbitControls in App.tsx (for mouse-drag rotation target).
   pivot: [number, number, number];
   // Whichever data point the mouse is currently hovering over, or null
-  // if nothing is being hovered.
+  // if nothing is being hovered. Read by App.tsx to conditionally show
+  // the "Point Analysis" HUD panel.
   hoveredPoint: DataPoint | null;
-  // Function to change the current pivot point.
+  // Updates the pivot. Called from PointCloud.tsx's onClick handler.
   setPivot: (p: [number, number, number]) => void;
-  // Function to change which point is currently being hovered.
+  // Updates hoveredPoint. Called from PointCloud.tsx's onPointerOver/
+  // onPointerOut handlers.
   setHoveredPoint: (p: DataPoint | null) => void;
 }
 
-// Creates the actual shared store, with its starting values and the
-// functions used to update it. Any component can call useStore() to read
-// from this or call one of the setters to update it — see PointCloud.tsx
-// (which writes to this) and App.tsx (which reads from this).
+// create() from Zustand returns a React hook (useStore) that any
+// component can call to read from or write to this shared state,
+// without needing a <Provider> wrapper or prop drilling. The function
+// passed to create() receives `set` (used to update state) and returns
+// the initial state plus the setter functions.
 export const useStore = create<VisualizerState>((set) => ({
-  // Starting pivot: the world origin, per the project spec.
+  // Starting pivot: the world origin, per the project spec — the
+  // camera should default to orbiting (0,0,0) until a point is clicked.
   pivot: [0, 0, 0],
   // Nothing is hovered when the app first loads.
   hoveredPoint: null,
