@@ -8,10 +8,12 @@ const MOVE_SPEED = 15;
 // How fast the camera orbits around the pivot when rotating (A/D)
 const ROTATION_SPEED = 1.5;
 
-// Keep keys outside to avoid React re-render resets
-// IN PLAIN TERMS: this object just tracks which movement keys are currently
-// being held down. It's kept outside the component so React doesn't reset
-// it every time the component re-renders.
+// Tracks which movement keys are currently held down. This is a plain
+// object living outside the component (not useState), because updating
+// it doesn't need to trigger a React re-render — useFrame already reads
+// it fresh every frame regardless. Using useState here would cause
+// unnecessary re-renders on every keypress, and React's render cycle
+// isn't fast enough for smooth per-frame movement anyway.
 const heldKeys: Record<string, boolean> = {
   w: false,
   a: false,
@@ -20,15 +22,22 @@ const heldKeys: Record<string, boolean> = {
 };
 
 // CameraRig listens for WASD keyboard input and moves the camera every
-// frame accordingly. It has no visual output of its own (returns null) —
-// its only job is to update the camera's position/orientation over time.
+// frame accordingly. It renders no visible output itself (returns null)
+// — its only job is to mutate the camera's position/orientation over
+// time as a side effect.
 export function CameraRig() {
+  // useThree() gives access to the R3F scene's shared objects — here we
+  // only need the active camera, which we'll mutate directly below.
   const { camera } = useThree();
-  // The point in 3D space the camera should orbit around and look at
+  // The point in 3D space the camera should orbit around and look at.
+  // Read from the shared Zustand store so it stays in sync with
+  // PointCloud.tsx, which is what actually updates this value on click.
   const pivot = useStore((state) => state.pivot);
 
-  // Set up keyboard listeners once, when this component first mounts.
-  // These just flip heldKeys[...] to true/false as keys go down/up.
+  // Registers raw browser keyboard listeners once, when this component
+  // first mounts. We use native addEventListener here instead of React
+  // event props because keyboard input needs to work globally (anywhere
+  // on the page), not just when a specific element is focused.
   useEffect(() => {
     const handleDown = (e: KeyboardEvent) => {
       heldKeys[e.key.toLowerCase()] = true;
@@ -38,24 +47,31 @@ export function CameraRig() {
     };
     window.addEventListener("keydown", handleDown);
     window.addEventListener("keyup", handleUp);
-    // Cleanup: remove the listeners if this component is ever removed,
-    // so we don't leak event handlers.
+    // Cleanup function: React calls this if the component ever unmounts,
+    // removing the listeners so they don't keep firing (and leaking
+    // memory) after this component no longer exists.
     return () => {
       window.removeEventListener("keydown", handleDown);
       window.removeEventListener("keyup", handleUp);
     };
-  }, []);
+  }, []); // empty dependency array: run once on mount, never again
 
-  // useFrame runs this logic once every rendered frame (many times per
-  // second), which is what makes holding a key feel like smooth movement
-  // rather than a single instant jump.
+  // useFrame (from R3F) runs this callback once per rendered frame —
+  // typically 60 times per second. `delta` is the time in seconds since
+  // the last frame, used below to make movement speed independent of
+  // frame rate (so it moves at the same real-world speed whether the
+  // browser renders at 30fps or 144fps).
   useFrame((_, delta) => {
+    // Converts the plain [x, y, z] array from the store into a
+    // THREE.Vector3, which supports the vector math methods used below.
     const pivotVector = new THREE.Vector3(...pivot);
 
     // 1. ZOOM logic (W/S)
-    // IN PLAIN TERMS: figures out the straight-line direction from the
-    // camera to the pivot point, then moves the camera a little bit along
-    // that line each frame — forward for W, backward for S.
+    // Computes the straight-line direction FROM the camera TO the pivot,
+    // as a unit vector (length 1, via .normalize()). Multiplying this
+    // direction by MOVE_SPEED * delta and adding it to the camera's
+    // position moves the camera along that line — toward the pivot for
+    // W, away from it for S (negative scale).
     const direction = new THREE.Vector3()
       .subVectors(pivotVector, camera.position)
       .normalize();
@@ -65,27 +81,38 @@ export function CameraRig() {
       camera.position.addScaledVector(direction, -MOVE_SPEED * delta);
 
     // 2. ORBIT logic (A/D)
-    // We move the camera position around the pivot point
-    // IN PLAIN TERMS: instead of moving in a straight line, this rotates
-    // the camera's position around the pivot point, like walking in a
-    // circle around a fixed spot while always facing the center.
+    // Rather than moving in a straight line, this rotates the camera's
+    // position around the pivot point on the Y axis (i.e. horizontally,
+    // like walking in a circle around a fixed spot).
     if (heldKeys.a || heldKeys.d) {
+      // relativePos: the camera's position expressed relative to the
+      // pivot (as if the pivot were the origin). Rotating this vector
+      // and adding it back to the pivot is the standard way to orbit
+      // a point around another point in 3D.
       const relativePos = new THREE.Vector3().subVectors(
         camera.position,
         pivotVector,
       );
       const angle = ROTATION_SPEED * delta * (heldKeys.a ? 1 : -1);
 
-      // Rotate around the Y axis
+      // applyAxisAngle rotates a vector around a given axis by a given
+      // angle (in radians). (0,1,0) is the Y axis (straight up), so this
+      // spins relativePos horizontally around the pivot.
       relativePos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
 
-      // Set new position
+      // Add the rotated relative position back onto the pivot to get
+      // the camera's new absolute position in the scene.
       camera.position.copy(pivotVector).add(relativePos);
     }
 
     // 3. Always look at the pivot
-    // Regardless of how the camera just moved, always point it back at
-    // the pivot so the current focus point stays centered on screen.
+    // Runs every frame regardless of which keys are held, so the camera
+    // stays pointed at the pivot even as its position changes above.
+    // NOTE: this currently runs alongside OrbitControls (in App.tsx),
+    // which also repositions/reorients the camera on mouse drag. Since
+    // both systems mutate the camera independently within the same
+    // frame loop, they can drift out of sync with each other — see
+    // issue #5/#7 for the planned fix.
     camera.lookAt(pivotVector);
   });
 

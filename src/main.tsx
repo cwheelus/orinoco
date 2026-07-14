@@ -3,13 +3,14 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 
-// Entry point for the whole application.
-// IN PLAIN TERMS: this is the very first code that runs. It finds the
-// empty <div id="root"> in the page's HTML and tells React to render
-// the entire app (starting with App.tsx) inside it.
+// Entry point for the whole application. Finds the empty <div id="root">
+// in index.html and tells React to render the App component tree inside
+// it — this is the first code that actually runs in the browser.
 //
-// StrictMode is a development-only helper from React that double-checks
-// for common mistakes; it has no effect in the final production build.
+// StrictMode is a development-only wrapper from React that intentionally
+// double-invokes certain functions (like component render and effects)
+// to help surface bugs from side effects that aren't properly cleaned up.
+// It has no effect in the production build.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
