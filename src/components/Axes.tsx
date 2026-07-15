@@ -1,11 +1,15 @@
 import { Billboard, Line, Text } from "@react-three/drei";
+import {
+  GRID_MIN as MIN,
+  GRID_MAX as MAX,
+  TICK_STEP,
+  DISPLAY_BOUND,
+} from "../lib/gridSpace";
 
-// Cartesian bounds and tick spacing — must match CartesianGrid.tsx.
-// These values come directly from the project spec: all three axes run
-// -2 to 2, with a labeled tick every 0.5 units.
-const MIN = -2;
-const MAX = 2;
-const TICK_STEP = 0.5;
+// Cartesian bounds and tick spacing come from lib/gridSpace.ts, the single
+// source of truth shared with CartesianGrid.tsx (box geometry) and
+// PointCloud.tsx (data normalization) — all three axes run -2 to 2, with a
+// labeled tick every 0.5 units.
 const TICK_LEN = 0.06; // length of each tick mark, in 3D units
 
 // Builds an evenly spaced array of tick positions from min to max
@@ -21,6 +25,18 @@ function range(min: number, max: number, step: number) {
 }
 
 const TICKS = range(MIN, MAX, TICK_STEP);
+
+// Converts a tick's fixed render-space position (always -2..2, regardless
+// of dataset) into the real data-space number it should display — a tick
+// at the box's outer wall (t === MAX) shows `bound` itself, one at the
+// center (t === 0) shows 0, and everything in between is a linear
+// interpolation. `bound` is DISPLAY_BOUND.x/y/z (per lib/gridSpace.ts) for
+// whichever axis this tick belongs to — each axis now scales
+// independently, so each has its own real-world magnitude to display
+// instead of a single shared one.
+function tickLabel(t: number, bound: number): string {
+  return ((t / MAX) * bound).toFixed(1);
+}
 
 // Axes draws tick marks, numeric labels, and axis name labels along the
 // OUTER EDGES of the Cartesian grid box (built separately in
@@ -67,59 +83,49 @@ export function Axes() {
             lineWidth={1}
           />
           <Billboard position={[MIN - 0.3, t, MAX]}>
-            <Text {...tickLabelProps}>{t.toFixed(1)}</Text>
+            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.y)}</Text>
           </Billboard>
         </group>
       ))}
-      {/* Axis name label, positioned just past the top tick. This edge
-          (x=MIN, z=MAX) was chosen over the equally valid back corner
-          (x=MIN, z=MIN) because it sits closer to the default camera
-          position, making it easier to read without rotating the scene. */}
-      <Billboard position={[MIN - 0.55, 0, MAX]}>
+      <Billboard position={[MIN - 1, 0, MAX]}>
         <Text {...axisLabelProps}>in-entropy</Text>
       </Billboard>
 
-      {/* X Axis (in-conv) — bottom edge where the floor meets the back
-          wall, at y=MIN, z=MIN. Same tick-per-value pattern as above,
-          but the line varies in x while y and z stay fixed at the edge. */}
       {TICKS.map((t) => (
         <group key={`x-tick-${t}`}>
           <Line
             points={[
-              [t, MIN - TICK_LEN, MIN],
-              [t, MIN, MIN],
+              [t, MIN - TICK_LEN, MAX],
+              [t, MIN, MAX],
             ]}
             color="#999999"
             lineWidth={1}
           />
-          <Billboard position={[t, MIN - 0.3, MIN]}>
-            <Text {...tickLabelProps}>{t.toFixed(1)}</Text>
+          <Billboard position={[t, MIN - 0.3, MAX]}>
+            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.x)}</Text>
           </Billboard>
         </group>
       ))}
-      <Billboard position={[0, MIN - 0.55, MIN]}>
+      <Billboard position={[0, MIN - 0.55, MAX]}>
         <Text {...axisLabelProps}>in-conv</Text>
       </Billboard>
 
-      {/* Z Axis (in-WHT-score) — bottom edge where the floor meets the
-          left wall, at y=MIN, x=MIN. Line varies in z while x and y
-          stay fixed at the edge. */}
       {TICKS.map((t) => (
         <group key={`z-tick-${t}`}>
           <Line
             points={[
-              [MIN, MIN - TICK_LEN, t],
-              [MIN, MIN, t],
+              [MAX+TICK_LEN, MIN, t],
+              [MAX, MIN, t],
             ]}
             color="#999999"
             lineWidth={1}
           />
-          <Billboard position={[MIN, MIN - 0.3, t]}>
-            <Text {...tickLabelProps}>{t.toFixed(1)}</Text>
+          <Billboard position={[MAX + 0.3,  MIN, t]}>
+            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.z)}</Text>
           </Billboard>
         </group>
       ))}
-      <Billboard position={[MIN, MIN - 0.55, 0]}>
+      <Billboard position={[MAX + 1, MIN, 0]}>
         <Text {...axisLabelProps}>in-WHT-score</Text>
       </Billboard>
     </group>
