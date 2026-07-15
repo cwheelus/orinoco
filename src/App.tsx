@@ -5,6 +5,7 @@ import { PointCloud } from "./components/PointCloud";
 import { CameraRig } from "./components/CameraRig";
 import { Axes } from "./components/Axes";
 import { CartesianGrid } from "./components/CartesianGrid";
+import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
 
 /**
  * Orinoco Flow Visualizer - Main Application Entry
@@ -73,13 +74,17 @@ function App() {
                   <span className="text-white/40 text-[10px]">
                     Classification
                   </span>
-                  {/* Class colors mirrored from Charles' documentation (Slide 15) */}
+                  {/* Color driven by the shared classColors map (lib/classColors.ts)
+                      rather than a fixed set of Tailwind classes, since the real
+                      classes (normal/nss/qc/zt) use arbitrary hex values, not
+                      Tailwind's built-in palette. */}
                   <span
-                    className={`text-[10px] font-bold uppercase ${
-                      hoveredPoint.className === "attack"
-                        ? "text-red-500"
-                        : "text-green-500"
-                    }`}
+                    className="text-[10px] font-bold uppercase"
+                    style={{
+                      color:
+                        classColors[hoveredPoint.className] ??
+                        DEFAULT_CLASS_COLOR,
+                    }}
                   >
                     {hoveredPoint.className}
                   </span>
@@ -139,29 +144,24 @@ function App() {
             </div>
           </div>
 
-          {/* Color Key: Defined by the Sentient.Solutions Class File Schema.
-              Hardcoded to match classColors in PointCloud.tsx — see issue #2
-              for the plan to derive both dynamically from an uploaded file. */}
+          {/* Color Key: generated directly from lib/classColors.ts (the same
+              map PointCloud.tsx uses for sphere colors), so the legend can
+              never drift out of sync with what's actually rendered — see
+              issue #2 for the longer-term plan to derive this from an
+              uploaded color-mapping file instead of a hardcoded map. */}
           <div className="bg-black/60 p-3 ring-1 ring-white/10 rounded">
             <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-4 bg-[#CC0000] rounded-sm shadow-[0_0_8px_#CC0000]" />
-                <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
-                  Attack
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-4 bg-[#00CC00] rounded-sm shadow-[0_0_8px_#00CC00]" />
-                <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
-                  Normal
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-4 bg-[#FFFFFF] rounded-sm shadow-[0_0_8px_#FFFFFF]" />
-                <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
-                  Unknown
-                </span>
-              </div>
+              {Object.entries(classColors).map(([className, color]) => (
+                <div key={className} className="flex items-center gap-2">
+                  <div
+                    className="w-2 h-4 rounded-sm"
+                    style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }}
+                  />
+                  <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
+                    {className}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

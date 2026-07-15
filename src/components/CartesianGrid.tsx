@@ -1,11 +1,10 @@
 import { Line } from "@react-three/drei";
+import { GRID_MIN as MIN, GRID_MAX as MAX, TICK_STEP as STEP } from "../lib/gridSpace";
 
-// Cartesian grid bounds — must match Axes.tsx. These values come
-// directly from the project spec: all three axes run -2 to 2, with a
-// gridline every 0.5 units (matching the tick spacing in Axes.tsx).
-const MIN = -2;
-const MAX = 2;
-const STEP = 0.5;
+// Cartesian grid bounds come from lib/gridSpace.ts, the single source of
+// truth shared with Axes.tsx (ticks/labels) and PointCloud.tsx (data
+// normalization) — all three axes run -2 to 2, with a gridline every 0.5
+// units (matching the tick spacing in Axes.tsx).
 const GRID_COLOR = "#3a4a6b";
 const GRID_OPACITY = 0.35;
 
