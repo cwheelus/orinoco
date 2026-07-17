@@ -1,10 +1,8 @@
 # Project Orinoco // 3D Cyber Threat Intelligence Visualizer
 
-A browser-native 3D visualization MVP built for Sentient Solutions. Project Orinoco enables security analysts to explore high-dimensional network data clusters through interactive 3D navigation, spatial analysis, and point inspection.
+Project Orinoco is a browser-native 3D visualization tool for exploring network telemetry. It projects selected traffic features into a three-dimensional Cartesian space, allowing analysts to inspect individual observations, navigate spatial relationships, and investigate clusters interactively.
 
-The application visualizes network features including **Entropy**, **Convolution**, and **WHT-scores** within a 3D Cartesian coordinate system. Analysts can navigate the environment, inspect individual data points, and dynamically adjust their exploration viewpoint through an interactive pivot system.
-
-> Throughout this document, **Entropy**, **Convolution**, and **WHT-score** refer to the conceptual features being visualized. `in-entropy`, `in-conv`, and `in-WHT-score` refer to the corresponding JSON field names and axis mappings.
+The application visualizes network flow features within a 3D Cartesian coordinate system. Analysts can navigate the environment, inspect individual data points, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot.
 
 ---
 
@@ -42,15 +40,15 @@ Example walkthrough:
 
 Project Orinoco renders high-dimensional network features in an interactive WebGL environment using Three.js and React Three Fiber.
 
-The plotting volume is an open-face Cartesian box spanning -2 to 2 on each axis, built in `CartesianGrid.tsx`. Tick marks, numeric labels, and axis titles are rendered separately in `Axes.tsx`.
+The plotting volume is an open-face Cartesian box, built in `CartesianGrid.tsx`. Tick marks, numeric labels, and axis titles are rendered separately in `Axes.tsx`. Each axis is independently scaled to the dataset's numeric range, rather than assuming a fixed bound — tick labels always reflect real data-space values.
 
 Data dimensions:
 
-| Feature      | Axis |
-| ------------ | ---- |
-| in-entropy   | Y    |
-| in-conv      | X    |
-| in-WHT-score | Z    |
+| Feature    | Axis |
+| ---------- | ---- |
+| invel-pps  | Y    |
+| orig-bytes | X    |
+| invel-bpp  | Z    |
 
 ---
 
@@ -58,15 +56,16 @@ Data dimensions:
 
 The visualization environment supports analyst-focused navigation.
 
-| Input       | Action                         |
-| ----------- | ------------------------------ |
-| W           | Move toward current pivot      |
-| S           | Move away from current pivot   |
-| A           | Orbit left around pivot        |
-| D           | Orbit right around pivot       |
-| Mouse Drag  | Free camera rotation           |
-| Mouse Hover | Inspect point metadata         |
-| Mouse Click | Set selected node as new pivot |
+| Input         | Action                         |
+| ------------- | ------------------------------ |
+| W             | Move toward current pivot      |
+| S             | Move away from current pivot   |
+| A             | Orbit left around pivot        |
+| D             | Orbit right around pivot       |
+| Mouse Drag    | Free camera rotation           |
+| Mouse Hover   | Inspect point metadata         |
+| Mouse Click   | Set selected node as new pivot |
+| Reset Control | Return pivot to origin         |
 
 ---
 
@@ -80,6 +79,8 @@ When a node is selected:
 2. The camera navigation pivot updates to the selected location
 3. The tactical reticle identifies the active pivot
 4. Analysts can explore nearby data relationships
+
+Users can reset the investigation pivot to the origin coordinate through the HUD control, providing a consistent baseline for spatial exploration.
 
 ---
 
@@ -102,11 +103,12 @@ The interface uses a security operations center inspired design with high-contra
 
 Current classification visualization:
 
-| Data Value | Display Label | Color     |
-| ---------- | ------------- | --------- |
-| `attack`   | Attack        | `#CC0000` |
-| `normal`   | Normal        | `#00CC00` |
-| `unknown`  | Unknown       | `#FFFFFF` |
+| Data Value | Color     |
+| ---------- | --------- |
+| `normal`   | `#dddddd` |
+| `nss`      | `#dd0000` |
+| `qc`       | `#00dd00` |
+| `zt`       | `#0000dd` |
 
 ---
 
@@ -143,9 +145,11 @@ Given the two-layer model above, some mechanism is needed to synchronize state b
 
 `@react-three/drei` ships a generic `Grid` helper — a flat, infinite floor-plane grid intended for general 3D scene reference (e.g. a game editor's floor). It doesn't support bounded dimensions, selectable wall faces, or tick marks/axis labels tied to specific data ranges.
 
-The spec calls for a fixed -2 to 2 box with visible walls on specific sides only (an "open-face" box, per analyst feedback that a fully enclosed cube obscures the view), plus numbered ticks at 0.5 intervals synced to axis name labels. No configuration of the drei helper could produce this — so `CartesianGrid.tsx` and `Axes.tsx` were built as custom components instead, giving full control over bounds, open/closed faces, and tick/label placement.
+The spec calls for a box with visible walls on specific sides only (an "open-face" box, per analyst feedback that a fully enclosed cube obscures the view), plus numbered ticks synced to axis name labels. No configuration of the drei helper could produce this — so `CartesianGrid.tsx` and `Axes.tsx` were built as custom components instead, giving full control over bounds, open/closed faces, and tick/label placement.
 
-The Cartesian plotting volume provides a normalized coordinate space for visualization. Individual datasets may undergo transformation into this plotting space before rendering.
+### Dynamic per-axis scaling
+
+Each axis scales independently based on the loaded dataset's actual range (`src/lib/gridSpace.ts`), rather than assuming a fixed bound. This was chosen because the real dataset's three columns (byte counts, packet rates, bytes-per-packet) live on wildly different magnitudes — a single shared scale factor compressed two of the three axes into a nearly flat sliver. `gridSpace.ts` is the single source of truth for these bounds, shared by `CartesianGrid.tsx` (box geometry), `Axes.tsx` (ticks/labels), and `PointCloud.tsx` (point positioning), so the three can never drift out of sync with each other.
 
 ---
 
@@ -166,13 +170,19 @@ orinoco/
 │   │   │   └── Tick marks, numeric labels, and axis titles
 │   │   │
 │   │   ├── CartesianGrid.tsx
-│   │   │   └── Open-face Cartesian plotting volume (-2 to 2)
+│   │   │   └── Open-face Cartesian plotting volume
 │   │   │
 │   │   ├── CameraRig.tsx
 │   │   │   └── WASD navigation and camera movement logic
 │   │   │
 │   │   └── PointCloud.tsx
 │   │       └── Threat data rendering and interaction
+│   │
+│   ├── lib/
+│   │   ├── gridSpace.ts
+│   │   │   └── Single source of truth for plotting bounds and per-axis scaling
+│   │   └── classColors.ts
+│   │       └── Single source of truth for classification → color mapping
 │   │
 │   ├── store/
 │   │   └── useStore.ts
@@ -320,7 +330,7 @@ Icon library used for interface elements.
 
 # Data Configuration
 
-The current MVP loads visualization data from a local JSON file. The rendering architecture intentionally separates the visualization engine from the data source so future datasets can be introduced with minimal changes.
+The current MVP loads visualization data from a local JSON file (`src/data.json`), sourced from Sentient Solutions' `flow-viz-sample1.csv`. The JSON file is an intermediate development format derived from the original CSV dataset.
 
 The visualization expects each data point to contain a unique identifier, three-dimensional feature values, and a classification label.
 
@@ -328,31 +338,34 @@ Example schema:
 
 ```json
 {
-  "uid": "12341234",
-  "in-entropy": 0.45,
-  "in-conv": 0.72,
-  "in-WHT-score": 0.31,
-  "class": "attack"
+  "uid": "C7mJzI2kJo1VmffDG6",
+  "x": 13816,
+  "y": 0.02753,
+  "z": 84.084211,
+  "className": "normal"
 }
 ```
 
 Data mapping:
 
 ```text
-in-entropy      → Y axis
-in-conv         → X axis
-in-WHT-score    → Z axis
-class           → Visualization category
+x (orig_bytes)  → X axis
+y (invel_pps)   → Y axis
+z (invel_bpp)   → Z axis
+className       → Visualization category
 uid             → Point identifier displayed in the HUD
 ```
 
 Current visualization categories:
 
-| Data Value | Display Label | Color     |
-| ---------- | ------------- | --------- |
-| `attack`   | Attack        | `#CC0000` |
-| `normal`   | Normal        | `#00CC00` |
-| `unknown`  | Unknown       | `#FFFFFF` |
+| Data Value | Color     |
+| ---------- | --------- |
+| `normal`   | `#dddddd` |
+| `nss`      | `#dd0000` |
+| `qc`       | `#00dd00` |
+| `zt`       | `#0000dd` |
+
+Classification colors are sourced from Sentient Solutions' `colors.csv` and defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync.
 
 The rendering architecture separates the visualization layer from the data source, allowing future datasets to be introduced through a data transformation layer without requiring changes to the 3D rendering components.
 
@@ -441,7 +454,10 @@ Pulled directly from [package.json](package.json)
 
 Potential future improvements:
 
-- Live threat data ingestion
+- Live threat data ingestion (CSV loading system)
+- Camera navigation refinements
+- Grid line toggle
+- Camera guardrails
 - Backend API integration
 - Advanced filtering and search
 - Additional classification categories
@@ -456,9 +472,9 @@ Potential future improvements:
 Project Orinoco is a functional MVP demonstrating:
 
 - Interactive 3D threat visualization
-- Cartesian spatial rendering
+- Cartesian spatial rendering with dynamic per-axis scaling
 - WASD camera navigation
-- Dynamic pivot exploration
+- Dynamic pivot exploration with origin reset
 - Real-time metadata inspection
 - SOC-style analyst interface
 
@@ -468,7 +484,7 @@ Project Orinoco is a functional MVP demonstrating:
 
 ©2026 Sentient Solutions
 
-Developed by:
+Developers:
 
 - Mark Yosinao
 - Daniel Merced
