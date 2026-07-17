@@ -88,7 +88,7 @@ export function Axes() {
         </group>
       ))}
       <Billboard position={[MIN - 1, 0, MAX]}>
-        <Text {...axisLabelProps}>in-entropy</Text>
+        <Text {...axisLabelProps}>invel-pps</Text>
       </Billboard>
 
       {TICKS.map((t) => (
@@ -107,26 +107,26 @@ export function Axes() {
         </group>
       ))}
       <Billboard position={[0, MIN - 0.55, MAX]}>
-        <Text {...axisLabelProps}>in-conv</Text>
+        <Text {...axisLabelProps}>orig-bytes</Text>
       </Billboard>
 
       {TICKS.map((t) => (
         <group key={`z-tick-${t}`}>
           <Line
             points={[
-              [MAX+TICK_LEN, MIN, t],
+              [MAX + TICK_LEN, MIN, t],
               [MAX, MIN, t],
             ]}
             color="#999999"
             lineWidth={1}
           />
-          <Billboard position={[MAX + 0.3,  MIN, t]}>
+          <Billboard position={[MAX + 0.3, MIN, t]}>
             <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.z)}</Text>
           </Billboard>
         </group>
       ))}
       <Billboard position={[MAX + 1, MIN, 0]}>
-        <Text {...axisLabelProps}>in-WHT-score</Text>
+        <Text {...axisLabelProps}>invel-bpp</Text>
       </Billboard>
     </group>
   );
