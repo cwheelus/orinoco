@@ -3,7 +3,8 @@ import {
   GRID_MIN as MIN,
   GRID_MAX as MAX,
   TICK_STEP,
-  DISPLAY_BOUND,
+  DISPLAY_RANGE,
+  type AxisRange,
 } from "../lib/gridSpace";
 
 // Cartesian bounds and tick spacing come from lib/gridSpace.ts, the single
@@ -27,15 +28,16 @@ function range(min: number, max: number, step: number) {
 const TICKS = range(MIN, MAX, TICK_STEP);
 
 // Converts a tick's fixed render-space position (always -2..2, regardless
-// of dataset) into the real data-space number it should display — a tick
-// at the box's outer wall (t === MAX) shows `bound` itself, one at the
-// center (t === 0) shows 0, and everything in between is a linear
-// interpolation. `bound` is DISPLAY_BOUND.x/y/z (per lib/gridSpace.ts) for
-// whichever axis this tick belongs to — each axis now scales
-// independently, so each has its own real-world magnitude to display
-// instead of a single shared one.
-function tickLabel(t: number, bound: number): string {
-  return ((t / MAX) * bound).toFixed(1);
+// of dataset) into the real data-space number it should display — a
+// linear interpolation across this axis's DISPLAY_RANGE (lib/gridSpace.ts):
+// the bottom wall (t === MIN) shows range.min, the top wall (t === MAX)
+// shows range.max. Because toRenderSpace positions points against the
+// same interval, a point's rendered height lines up with the label of
+// whatever tick it sits next to — these labels are real data values, not
+// offsets from the data's center.
+function tickLabel(t: number, range: AxisRange): string {
+  const fraction = (t - MIN) / (MAX - MIN);
+  return (range.min + fraction * (range.max - range.min)).toFixed(1);
 }
 
 // Axes draws tick marks, numeric labels, and axis name labels along the
@@ -83,7 +85,7 @@ export function Axes() {
             lineWidth={1}
           />
           <Billboard position={[MIN - 0.3, t, MAX]}>
-            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.y)}</Text>
+            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.y)}</Text>
           </Billboard>
         </group>
       ))}
@@ -102,7 +104,7 @@ export function Axes() {
             lineWidth={1}
           />
           <Billboard position={[t, MIN - 0.3, MAX]}>
-            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.x)}</Text>
+            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.x)}</Text>
           </Billboard>
         </group>
       ))}
@@ -121,7 +123,7 @@ export function Axes() {
             lineWidth={1}
           />
           <Billboard position={[MAX + 0.3, MIN, t]}>
-            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_BOUND.z)}</Text>
+            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.z)}</Text>
           </Billboard>
         </group>
       ))}
