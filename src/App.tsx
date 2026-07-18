@@ -30,7 +30,11 @@ function App() {
   // The data point object currently under the cursor, or null if
   // nothing is being hovered. Drives the conditional HUD panel below.
   const hoveredPoint = useStore((state) => state.hoveredPoint);
-
+  // Reads the setPivot action from the shared store (see useStore.ts).
+  // Used below by the Reset Pivot button to return the camera's orbit
+  // target back to the world origin, independent of PointCloud.tsx's
+  // onClick handler, which is the only other place this setter is called.
+  const setPivot = useStore((state) => state.setPivot);
   return (
     <div className="w-screen h-screen bg-slate-900 relative">
       {/* 
@@ -142,6 +146,18 @@ function App() {
                 </kbd>
               </div>
             </div>
+            <div className="w-[1px] bg-white/10 h-6 self-end mb-1" />
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] uppercase opacity-40 mb-1">
+                Reset Pivot
+              </span>
+              <button
+                onClick={() => setPivot([0, 0, 0])}
+                className="pointer-events-auto px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/40 border border-blue-500/40 rounded text-[10px] font-bold font-mono text-blue-300 uppercase transition-colors"
+              >
+                Origin
+              </button>
+            </div>
           </div>
 
           {/* Color Key: generated directly from lib/classColors.ts (the same
@@ -155,7 +171,10 @@ function App() {
                 <div key={className} className="flex items-center gap-2">
                   <div
                     className="w-2 h-4 rounded-sm"
-                    style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }}
+                    style={{
+                      backgroundColor: color,
+                      boxShadow: `0 0 8px ${color}`,
+                    }}
                   />
                   <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
                     {className}
