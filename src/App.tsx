@@ -1,5 +1,5 @@
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, PerspectiveCamera, Billboard } from "@react-three/drei";
+import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
 import { useStore } from "./store/useStore";
 import { PointCloud } from "./components/PointCloud";
 import { CameraRig } from "./components/CameraRig";
@@ -149,6 +149,23 @@ function App() {
             <div className="w-[1px] bg-white/10 h-6 self-end mb-1" />
             <div className="flex flex-col items-center">
               <span className="text-[8px] uppercase opacity-40 mb-1">
+                Pivot (Arrows / Spc / Shift)
+              </span>
+              <div className="flex gap-1 text-white">
+                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
+                  ←→↑↓
+                </kbd>
+                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
+                  Spc
+                </kbd>
+                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
+                  ⇧
+                </kbd>
+              </div>
+            </div>
+            <div className="w-[1px] bg-white/10 h-6 self-end mb-1" />
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] uppercase opacity-40 mb-1">
                 Reset Pivot
               </span>
               <button
@@ -196,9 +213,14 @@ function App() {
             earlier value of [20,20,20] made the box look too small. */}
         <PerspectiveCamera makeDefault position={[5, 4, 5]} />
 
-        {/* Lighting: Balanced to ensure glow (emissive) points aren't washed out */}
-        <ambientLight intensity={0.5} />
-        <pointLight position={[10, 10, 10]} intensity={1} />
+        {/* Lighting: a strong ambient floor so every data point is
+            passively visible anywhere in the box (meshStandardMaterial
+            renders near-black without light), plus one weak point light
+            kept purely for directional shading — the subtle bright/dark
+            gradient across each sphere that makes it read as a 3D ball
+            instead of a flat disc. */}
+        <ambientLight intensity={1.2} />
+        <pointLight position={[10, 10, 10]} intensity={0.5} />
 
         {/* Draws the open-face reference box + axis ticks/labels. Two
             separate components since each has one responsibility:
@@ -225,25 +247,47 @@ function App() {
         */}
         <OrbitControls target={pivot} makeDefault />
 
-        {/* 
-            TACTICAL PIVOT RETICLE:
-            Visual feedback identifying the 'center' of the world.
-            Uses Billboard to remain visible regardless of camera angle.
-            The two overlapping ringGeometry meshes (one circular with 32
-            segments, one with only 4 segments forming a diamond outline)
-            combine into the ring+diamond marker shape.
+        {/*
+            TACTICAL PIVOT MARKER:
+            Visual feedback identifying the 'center' of the world — a
+            six-armed cross: one line segment through the pivot along each
+            of the three axes (so two arms per axis, six total). Unlike
+            the previous billboarded ring, the cross is a real 3D object
+            whose arms foreshorten with perspective, which doubles as an
+            orientation cue for which way each axis runs while traversing
+            the pivot with the arrow keys.
         */}
         <group position={pivot}>
-          <Billboard>
-            <mesh>
-              <ringGeometry args={[0.25, 0.28, 32]} />
-              <meshBasicMaterial color="#3b82f6" transparent opacity={0.6} />
-            </mesh>
-            <mesh rotation={[0, 0, Math.PI / 4]}>
-              <ringGeometry args={[0.35, 0.38, 4]} />
-              <meshBasicMaterial color="#3b82f6" transparent opacity={0.3} />
-            </mesh>
-          </Billboard>
+          <Line
+            points={[
+              [-0.15, 0, 0],
+              [0.15, 0, 0],
+            ]}
+            color="#3b82f6"
+            lineWidth={2}
+            transparent
+            opacity={0.8}
+          />
+          <Line
+            points={[
+              [0, -0.15, 0],
+              [0, 0.15, 0],
+            ]}
+            color="#3b82f6"
+            lineWidth={2}
+            transparent
+            opacity={0.8}
+          />
+          <Line
+            points={[
+              [0, 0, -0.15],
+              [0, 0, 0.15],
+            ]}
+            color="#3b82f6"
+            lineWidth={2}
+            transparent
+            opacity={0.8}
+          />
           {/* Subtl light cast by the pivot marker to illuminate nearby nodes */}
           <pointLight distance={3} intensity={5} color="#3b82f6" />
         </group>

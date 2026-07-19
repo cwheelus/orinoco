@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import * as THREE from "three";
@@ -7,6 +7,19 @@ import * as THREE from "three";
 const MOVE_SPEED = 15;
 // How fast the camera orbits around the pivot when rotating (A/D)
 const ROTATION_SPEED = 1.5;
+// How fast the arrow/space/shift keys traverse the pivot through the
+// scene, in render-space units per second (the box is 4 units wide).
+const PIVOT_SPEED = 1.5;
+
+// Keys whose browser default behavior (scrolling the page) must be
+// suppressed while the visualizer is driving them.
+const PREVENT_DEFAULT_KEYS = new Set([
+  "arrowup",
+  "arrowdown",
+  "arrowleft",
+  "arrowright",
+  " ",
+]);
 
 // Tracks which movement keys are currently held down. This is a plain
 // object living outside the component (not useState), because updating
@@ -19,6 +32,12 @@ const heldKeys: Record<string, boolean> = {
   a: false,
   s: false,
   d: false,
+  arrowup: false,
+  arrowdown: false,
+  arrowleft: false,
+  arrowright: false,
+  " ": false, // space
+  shift: false,
 };
 
 // CameraRig listens for WASD keyboard input and moves the camera every
@@ -33,6 +52,16 @@ export function CameraRig() {
   // Read from the shared Zustand store so it stays in sync with
   // PointCloud.tsx, which is what actually updates this value on click.
   const pivot = useStore((state) => state.pivot);
+  // Setter for the pivot — the arrow/space/shift keys below move the
+  // pivot itself (unlike WASD, which moves the camera around it).
+  const setPivot = useStore((state) => state.setPivot);
+
+  // The pivot position as of the previous frame. Comparing against it
+  // each frame is how we detect that the pivot moved (e.g. the user
+  // clicked a data point) so the camera can be translated by the same
+  // offset — keeping its rotation fixed instead of snapping to face the
+  // new pivot from its old position.
+  const prevPivot = useRef(new THREE.Vector3(...pivot));
 
   // Registers raw browser keyboard listeners once, when this component
   // first mounts. We use native addEventListener here instead of React
@@ -40,7 +69,11 @@ export function CameraRig() {
   // on the page), not just when a specific element is focused.
   useEffect(() => {
     const handleDown = (e: KeyboardEvent) => {
-      heldKeys[e.key.toLowerCase()] = true;
+      const key = e.key.toLowerCase();
+      // Arrows and space normally scroll the page — swallow that so
+      // pivot traversal doesn't also drag the viewport around.
+      if (PREVENT_DEFAULT_KEYS.has(key)) e.preventDefault();
+      heldKeys[key] = true;
     };
     const handleUp = (e: KeyboardEvent) => {
       heldKeys[e.key.toLowerCase()] = false;
@@ -65,6 +98,40 @@ export function CameraRig() {
     // Converts the plain [x, y, z] array from the store into a
     // THREE.Vector3, which supports the vector math methods used below.
     const pivotVector = new THREE.Vector3(...pivot);
+
+    // 0a. PIVOT FOLLOW (external changes, e.g. clicking a data point)
+    // If the pivot moved since last frame, translate the camera by that
+    // same offset. A pure translation preserves the camera's rotation —
+    // the new pivot lands at the exact screen position the old one held,
+    // rather than the camera whipping around to face it. (This is what
+    // satisfies "changing the pivot must not change camera rotation".)
+    if (!prevPivot.current.equals(pivotVector)) {
+      camera.position.add(
+        new THREE.Vector3().subVectors(pivotVector, prevPivot.current),
+      );
+      prevPivot.current.copy(pivotVector);
+    }
+
+    // 0b. PIVOT TRAVERSAL (arrows / space / shift)
+    // Each axis pairs two keys into a -1/0/+1 direction:
+    //   Left/Right  -> x (orig-bytes axis)
+    //   Space/Shift -> y (invel-pps axis: space rises, shift descends)
+    //   Up/Down     -> z (invel-bpp axis)
+    // The camera is moved by the same offset in the same frame (same
+    // rotation-preserving translation as 0a), and prevPivot is updated
+    // immediately so 0a doesn't re-apply this movement next frame.
+    const move = new THREE.Vector3(
+      (heldKeys.arrowright ? 1 : 0) - (heldKeys.arrowleft ? 1 : 0),
+      (heldKeys[" "] ? 1 : 0) - (heldKeys.shift ? 1 : 0),
+      (heldKeys.arrowup ? 1 : 0) - (heldKeys.arrowdown ? 1 : 0),
+    );
+    if (move.lengthSq() > 0) {
+      move.multiplyScalar(PIVOT_SPEED * delta);
+      pivotVector.add(move);
+      camera.position.add(move);
+      prevPivot.current.copy(pivotVector);
+      setPivot([pivotVector.x, pivotVector.y, pivotVector.z]);
+    }
 
     // 1. ZOOM logic (W/S)
     // Computes the straight-line direction FROM the camera TO the pivot,
