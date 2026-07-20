@@ -12,6 +12,7 @@ The application visualizes network flow features within a 3D Cartesian coordinat
 
 **Demo Videos:**
 [Watch Orinoco MVP Walkthrough 7/8/2026](https://youtu.be/Gr2Yjx_JF_4)
+[Watch Orinoco MVP Walkthrough 7/20/2026](https://youtu.be/_KvzO14yMGE)
 
 Example walkthrough:
 
