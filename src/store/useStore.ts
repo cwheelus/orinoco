@@ -1,23 +1,49 @@
 import { create } from "zustand";
+import defaultData from "../data.json";
+import { computeGridSpace, type GridSpace } from "../lib/gridSpace";
+import type { DataPoint } from "../types";
 
-// Shape of a single data point loaded from data.json. Note: current
-// fields (x/y/z/className) don't match the spec's actual schema
-// (in-entropy/in-conv/in-WHT-score/class) — this is placeholder test
-// data pending issue #2's data normalization work.
-interface DataPoint {
-  uid: string;
-  x: number;
-  y: number;
-  z: number;
-  className: string;
+export type { DataPoint };
+
+// Human-facing names for each axis, e.g. "orig_bytes" — comes from
+// parseCSV.ts's detected column mapping when a CSV is loaded, or the
+// hardcoded defaults below for the bundled data.json. Axes.tsx and
+// App.tsx's Point Analysis panel both read these instead of
+// hardcoding label strings, so a newly loaded CSV's own column names
+// appear everywhere automatically.
+export interface AxisLabels {
+  x: string;
+  y: string;
+  z: string;
 }
 
-// Shape of the entire shared state store. This is the single source of
-// truth that both the 3D scene (inside <Canvas>) and the 2D HUD
-// (outside <Canvas>, in App.tsx) read from — since those are separate
-// React trees that don't otherwise have a way to pass props to each
-// other directly.
+// Default labels matching data.json's known source columns
+// (flow-viz-sample1.csv) — used until a CSV is loaded and replaces
+// them with that file's own detected column names.
+const DEFAULT_AXIS_LABELS: AxisLabels = {
+  x: "orig_bytes",
+  y: "invel_pps",
+  z: "invel_bpp",
+};
+
 interface VisualizerState {
+  // The active dataset being rendered. Defaults to the bundled
+  // data.json so the app still shows something on first load —
+  // loading a CSV via the Toolbar replaces this entirely via
+  // setDataPoints, rather than merging or appending.
+  dataPoints: DataPoint[];
+  // Derived grid geometry (display ranges, per-axis scale, MIN_SCALE,
+  // and a ready-to-use toRenderSpace function) for the CURRENT
+  // dataPoints. Recomputed by setDataPoints whenever the dataset
+  // changes — see lib/gridSpace.ts's computeGridSpace. Components
+  // (Axes.tsx, CartesianGrid.tsx, PointCloud.tsx) read this instead of
+  // importing gridSpace.ts's old static, load-time-only constants.
+  gridSpace: GridSpace;
+  // Which real column name is plotted on each axis, e.g.
+  // { x: "orig_bytes", y: "invel_pps", z: "invel_bpp" }. Axes.tsx and
+  // App.tsx's Point Analysis panel both read these instead of
+  // hardcoded label strings.
+  axisLabels: AxisLabels;
   // The point in 3D space the camera currently orbits around and looks
   // at. Read by CameraRig.tsx (for WASD movement math) and by
   // OrbitControls in App.tsx (for mouse-drag rotation target).
@@ -26,24 +52,54 @@ interface VisualizerState {
   // if nothing is being hovered. Read by App.tsx to conditionally show
   // the "Point Analysis" HUD panel.
   hoveredPoint: DataPoint | null;
+  // Whether the Cartesian grid (box + tick lines) is currently
+  // rendered. Toggled from the Toolbar's grid on/off icon — see
+  // App.tsx, which conditionally renders <CartesianGrid /> based on
+  // this flag. Does not affect Axes.tsx (labels stay visible even
+  // with the grid hidden, since they're still useful reference points
+  // on their own).
+  gridVisible: boolean;
+  // Replaces the active dataset AND its derived grid geometry/labels
+  // together, atomically. Called from App.tsx's CSV load handler once
+  // parseCSV.ts successfully parses a file — labels come from
+  // parseCSV's detected ColumnMapping (mapping.x/y/z). Also resets the
+  // pivot back to the origin and clears any stale hoveredPoint, since
+  // both referenced the OLD dataset's points/positions.
+  setDataPoints: (points: DataPoint[], labels: AxisLabels) => void;
   // Updates the pivot. Called from PointCloud.tsx's onClick handler.
   setPivot: (p: [number, number, number]) => void;
   // Updates hoveredPoint. Called from PointCloud.tsx's onPointerOver/
   // onPointerOut handlers.
   setHoveredPoint: (p: DataPoint | null) => void;
+  // Flips gridVisible. Called from the Toolbar's grid toggle button.
+  toggleGrid: () => void;
 }
 
-// create() from Zustand returns a React hook (useStore) that any
-// component can call to read from or write to this shared state,
-// without needing a <Provider> wrapper or prop drilling. The function
-// passed to create() receives `set` (used to update state) and returns
-// the initial state plus the setter functions.
 export const useStore = create<VisualizerState>((set) => ({
+  // Cast is safe: data.json is authored to match this exact shape.
+  dataPoints: defaultData as DataPoint[],
+  gridSpace: computeGridSpace(defaultData as DataPoint[]),
+  axisLabels: DEFAULT_AXIS_LABELS,
   // Starting pivot: the world origin, per the project spec — the
   // camera should default to orbiting (0,0,0) until a point is clicked.
   pivot: [0, 0, 0],
   // Nothing is hovered when the app first loads.
   hoveredPoint: null,
+  // Grid starts visible by default.
+  gridVisible: true,
+  setDataPoints: (dataPoints, axisLabels) =>
+    set({
+      dataPoints,
+      axisLabels,
+      // Recompute grid geometry for the NEW dataset here, not in the
+      // caller — keeps "loading a dataset" and "deriving its grid
+      // space" atomic, so no other code path can set dataPoints
+      // without also updating the geometry that depends on it.
+      gridSpace: computeGridSpace(dataPoints),
+      pivot: [0, 0, 0],
+      hoveredPoint: null,
+    }),
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
+  toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
 }));

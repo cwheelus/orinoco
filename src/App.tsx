@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
 import { useStore } from "./store/useStore";
@@ -5,6 +6,8 @@ import { PointCloud } from "./components/PointCloud";
 import { CameraRig } from "./components/CameraRig";
 import { Axes } from "./components/Axes";
 import { CartesianGrid } from "./components/CartesianGrid";
+import { Toolbar } from "./components/Toolbar";
+import { parseCSV } from "./lib/parseCSV";
 import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
 
 /**
@@ -13,30 +16,90 @@ import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
  * ARCHITECTURE:
  * - UI Layer: HTML/Tailwind over the 3D Canvas (zIndex: 10)
  * - 3D Layer: React Three Fiber (R3F) for WebGL rendering
- * - State: Zustand store (useStore) for cross-component sync (pivoting, hovering)
+ * - State: Zustand store (useStore) for cross-component sync (pivoting,
+ *   hovering, the active dataset, and its derived grid geometry/labels)
  *
  * This file renders two layers stacked on top of each other: a flat 2D
  * HTML layer (text, buttons, info panels) and a 3D <Canvas> layer
  * beneath it (the navigable scene). The two layers never reference each
  * other directly — both read from the same Zustand store, so state
- * changes in one (e.g. a 3D point being hovered) can update the other
- * (the 2D HUD panel) without any direct coupling between them.
+ * changes in one (e.g. a 3D point being hovered, or a new CSV loaded)
+ * can update the other without any direct coupling between them.
  */
 function App() {
   // "pivot": the point the camera currently orbits around. Starts at
   // the world origin (0,0,0) and updates when a data point is clicked
-  // (see PointCloud.tsx's onClick handler).
+  // (see PointCloud.tsx's onClick handler), or when a CSV is loaded
+  // (setDataPoints resets it back to origin — see useStore.ts).
   const pivot = useStore((state) => state.pivot);
   // The data point object currently under the cursor, or null if
   // nothing is being hovered. Drives the conditional HUD panel below.
   const hoveredPoint = useStore((state) => state.hoveredPoint);
-  // Reads the setPivot action from the shared store (see useStore.ts).
-  // Used below by the Reset Pivot button to return the camera's orbit
-  // target back to the world origin, independent of PointCloud.tsx's
-  // onClick handler, which is the only other place this setter is called.
-  const setPivot = useStore((state) => state.setPivot);
+  // Which real column is plotted on each axis (e.g. "orig_bytes"),
+  // used below so the Point Analysis panel's metric labels always
+  // match whatever's actually loaded, instead of hardcoded letters.
+  const axisLabels = useStore((state) => state.axisLabels);
+  // Whether the grid box is currently shown — toggled from the
+  // Toolbar's grid on/off icon.
+  const gridVisible = useStore((state) => state.gridVisible);
+  // Replaces the active dataset (and its derived grid geometry/axis
+  // labels, computed together — see useStore.ts's setDataPoints).
+  const setDataPoints = useStore((state) => state.setDataPoints);
+
+  // Transient, UI-only error state for a failed CSV load. Lives here
+  // (not in the Zustand store) since it's purely local presentation
+  // state — no other component needs to read or react to it, unlike
+  // pivot/hoveredPoint/dataPoints, which genuinely need to be shared.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Handles a file selected via the Toolbar's paperclip button. Three
+  // possible outcomes, each handled distinctly rather than collapsed
+  // into a single success/failure branch:
+  //  1. Full success (no skipped rows) — dataset replaces the old one,
+  //     no banner shown, since nothing needs flagging to the user.
+  //  2. Partial success (some rows skipped) — dataset still loads and
+  //     replaces the old one, but a banner surfaces which row numbers
+  //     were excluded, so the analyst knows their point count may not
+  //     match every row in the source file.
+  //  3. Failure (parseCSV rejects) — nothing replaces the current
+  //     dataset; the previous data.json or last-loaded CSV stays
+  //     active, and the banner shows parseCSV's specific error
+  //     message (wrong column count, empty file, etc.) rather than a
+  //     generic "something went wrong."
+  const handleFileSelected = async (file: File) => {
+    // Clear any previous banner at the start of every new attempt, so
+    // a stale error/info message from a prior load doesn't linger on
+    // screen if this attempt succeeds cleanly.
+    setLoadError(null);
+    try {
+      const { points, mapping, skippedRows } = await parseCSV(file);
+      setDataPoints(points, { x: mapping.x, y: mapping.y, z: mapping.z });
+      if (skippedRows.length > 0) {
+        // Not a hard failure — the file loaded, just with some rows
+        // excluded. Still worth surfacing so the analyst knows the
+        // point count doesn't necessarily match every row in their file.
+        setLoadError(
+          `Loaded with ${skippedRows.length} row(s) skipped (missing or invalid data): rows ${skippedRows.join(", ")}`,
+        );
+      }
+    } catch (err) {
+      // err is `unknown` by TypeScript's default catch typing — the
+      // instanceof check narrows it to Error before reading .message,
+      // with a generic fallback for the rare case something non-Error
+      // gets thrown (e.g. a raw string).
+      setLoadError(err instanceof Error ? err.message : "Failed to load CSV.");
+    }
+  };
+
   return (
     <div className="w-screen h-screen bg-slate-900 relative">
+      {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
+          Rendered as its own fixed-position, draggable panel — NOT
+          nested inside the HUD's flex layout below — since its screen
+          position is self-managed (see Toolbar.tsx's `position` state)
+          rather than dictated by a parent flex/grid container. */}
+      <Toolbar onFileSelected={handleFileSelected} />
+
       {/* 
           1. HUD OVERLAY (2D)
           'pointer-events-none' is critical here: it allows clicks to "pass through" 
@@ -56,6 +119,19 @@ function App() {
             v1.0.0 // Sentient Solutions // Internal Systems
           </p>
         </div>
+
+        {/* CSV load error/info banner — only renders when loadError is
+            set. Uses the same glass-morphism styling as the Point
+            Analysis panel below for visual consistency. Cleared
+            (setLoadError(null)) at the start of every new load attempt. */}
+        {loadError && (
+          <div className="pointer-events-auto max-w-md p-3 bg-red-950/80 backdrop-blur-md border-l-2 border-red-500 ring-1 ring-white/10 shadow-2xl">
+            <p className="text-[10px] font-bold text-red-400 uppercase mb-1">
+              CSV Load
+            </p>
+            <p className="text-[11px] text-white/80">{loadError}</p>
+          </div>
+        )}
 
         {/* Dynamic Point Inspector: only renders when hoveredPoint is
             truthy (i.e. a point is currently being hovered). Uses `&&`
@@ -94,19 +170,32 @@ function App() {
                   </span>
                 </div>
                 <div className="pt-1">
-                  {/* Maps current hovered coordinates into a readable grid */}
+                  {/* Labels now come from axisLabels (the real column
+                      names for whatever dataset is loaded) instead of
+                      hardcoded E/C/W letters — keeps this panel
+                      consistent with what Axes.tsx shows on the grid
+                      itself, for any dataset, not just the original one. */}
                   <span className="text-white/40 text-[10px] block mb-1">
-                    Metrics (X, Y, Z)
+                    Metrics ({axisLabels.x}, {axisLabels.y}, {axisLabels.z})
                   </span>
                   <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-white/80">
-                    <div className="bg-white/5 p-1 rounded">
-                      E: {hoveredPoint.x.toFixed(3)}
+                    <div
+                      className="bg-white/5 p-1 rounded"
+                      title={axisLabels.x}
+                    >
+                      {hoveredPoint.x.toFixed(3)}
                     </div>
-                    <div className="bg-white/5 p-1 rounded">
-                      C: {hoveredPoint.y.toFixed(3)}
+                    <div
+                      className="bg-white/5 p-1 rounded"
+                      title={axisLabels.y}
+                    >
+                      {hoveredPoint.y.toFixed(3)}
                     </div>
-                    <div className="bg-white/5 p-1 rounded">
-                      W: {hoveredPoint.z.toFixed(3)}
+                    <div
+                      className="bg-white/5 p-1 rounded"
+                      title={axisLabels.z}
+                    >
+                      {hoveredPoint.z.toFixed(3)}
                     </div>
                   </div>
                 </div>
@@ -115,9 +204,10 @@ function App() {
           )}
         </div>
 
-        {/* Bottom HUD: Control Guide & Classification Legend */}
+        {/* Bottom HUD: Control Guide & Classification Legend. Reset
+            Pivot now lives in the Toolbar instead of here, so it isn't
+            duplicated in two places. */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-          {/* Visual Keyboard Guide (Improves UX for non-gamers) */}
           <div className="bg-white/5 p-3 backdrop-blur-sm border border-white/10 rounded flex gap-4">
             <div className="flex flex-col items-center">
               <span className="text-[8px] uppercase opacity-40 mb-1">
@@ -163,25 +253,11 @@ function App() {
                 </kbd>
               </div>
             </div>
-            <div className="w-[1px] bg-white/10 h-6 self-end mb-1" />
-            <div className="flex flex-col items-center">
-              <span className="text-[8px] uppercase opacity-40 mb-1">
-                Reset Pivot
-              </span>
-              <button
-                onClick={() => setPivot([0, 0, 0])}
-                className="pointer-events-auto px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/40 border border-blue-500/40 rounded text-[10px] font-bold font-mono text-blue-300 uppercase transition-colors"
-              >
-                Origin
-              </button>
-            </div>
           </div>
 
           {/* Color Key: generated directly from lib/classColors.ts (the same
               map PointCloud.tsx uses for sphere colors), so the legend can
-              never drift out of sync with what's actually rendered — see
-              issue #2 for the longer-term plan to derive this from an
-              uploaded color-mapping file instead of a hardcoded map. */}
+              never drift out of sync with what's actually rendered. */}
           <div className="bg-black/60 p-3 ring-1 ring-white/10 rounded">
             <div className="flex gap-4">
               {Object.entries(classColors).map(([className, color]) => (
@@ -222,11 +298,12 @@ function App() {
         <ambientLight intensity={1.2} />
         <pointLight position={[10, 10, 10]} intensity={0.5} />
 
-        {/* Draws the open-face reference box + axis ticks/labels. Two
-            separate components since each has one responsibility:
-            CartesianGrid draws the box geometry, Axes draws the ticks,
-            numbers, and axis names along its edges. */}
-        <CartesianGrid />
+        {/* Draws the open-face reference box + axis ticks/labels.
+            CartesianGrid (the box lines) can be toggled off via the
+            Toolbar's grid icon; Axes (ticks/labels) stays visible
+            either way, since coordinate labels remain useful on their
+            own even without the box geometry. */}
+        {gridVisible && <CartesianGrid />}
 
         {/* 
             ENGINE COMPONENTS:
@@ -243,7 +320,7 @@ function App() {
             'target={pivot}' ensures the mouse rotates around the currently
             selected point. NOTE: this runs alongside CameraRig.tsx's own
             camera.lookAt() call every frame — see the note in CameraRig.tsx
-            about the resulting drift issue (tracked in #5/#7).
+            about the resulting drift issue (tracked in #5).
         */}
         <OrbitControls target={pivot} makeDefault />
 

@@ -3,9 +3,9 @@ import {
   GRID_MIN as MIN,
   GRID_MAX as MAX,
   TICK_STEP,
-  DISPLAY_RANGE,
   type AxisRange,
 } from "../lib/gridSpace";
+import { useStore } from "../store/useStore";
 
 // Cartesian bounds and tick spacing come from lib/gridSpace.ts, the single
 // source of truth shared with CartesianGrid.tsx (box geometry) and
@@ -15,7 +15,8 @@ const TICK_LEN = 0.06; // length of each tick mark, in 3D units
 
 // Builds an evenly spaced array of tick positions from min to max
 // (e.g. -2.0, -1.5, -1.0 ... up to 2.0). Computed once at module load
-// rather than on every render, since the bounds never change.
+// rather than on every render, since MIN/MAX/TICK_STEP never change —
+// only DISPLAY_RANGE (read from the store below) varies per dataset.
 function range(min: number, max: number, step: number) {
   const values: number[] = [];
   for (let v = min; v <= max + 1e-6; v += step) {
@@ -29,12 +30,13 @@ const TICKS = range(MIN, MAX, TICK_STEP);
 
 // Converts a tick's fixed render-space position (always -2..2, regardless
 // of dataset) into the real data-space number it should display — a
-// linear interpolation across this axis's DISPLAY_RANGE (lib/gridSpace.ts):
-// the bottom wall (t === MIN) shows range.min, the top wall (t === MAX)
-// shows range.max. Because toRenderSpace positions points against the
-// same interval, a point's rendered height lines up with the label of
-// whatever tick it sits next to — these labels are real data values, not
-// offsets from the data's center.
+// linear interpolation across this axis's DISPLAY_RANGE (now read from
+// the store, since it's recomputed per dataset — see lib/gridSpace.ts's
+// computeGridSpace): the bottom wall (t === MIN) shows range.min, the top
+// wall (t === MAX) shows range.max. Because toRenderSpace positions
+// points against the same interval, a point's rendered height lines up
+// with the label of whatever tick it sits next to — these labels are
+// real data values, not offsets from the data's center.
 function tickLabel(t: number, range: AxisRange): string {
   const fraction = (t - MIN) / (MAX - MIN);
   return (range.min + fraction * (range.max - range.min)).toFixed(1);
@@ -52,6 +54,15 @@ function tickLabel(t: number, range: AxisRange): string {
 // orbits, flat text would appear edge-on and unreadable from many angles.
 // Billboard automatically re-orients the text to always face the camera.
 export function Axes() {
+  // DISPLAY_RANGE and axis labels both come from the store now, instead
+  // of a static gridSpace.ts import and hardcoded strings. This is what
+  // makes a newly loaded CSV's own column names and value ranges show up
+  // on the grid automatically — see useStore.ts's setDataPoints, which
+  // recomputes gridSpace and sets axisLabels together whenever the
+  // active dataset changes.
+  const { DISPLAY_RANGE } = useStore((state) => state.gridSpace);
+  const axisLabels = useStore((state) => state.axisLabels);
+
   const tickLabelProps = {
     fontSize: 0.1,
     color: "#cccccc",
@@ -64,9 +75,9 @@ export function Axes() {
 
   return (
     <group>
-      {/* Y Axis (in-entropy) — front-left outer edge, at x=MIN, z=MAX.
-          We loop over TICKS and render one <group> per tick value `t`,
-          each containing a small line (the tick mark) and a text label
+      {/* Y Axis — front-left outer edge, at x=MIN, z=MAX. We loop over
+          TICKS and render one <group> per tick value `t`, each
+          containing a small line (the tick mark) and a text label
           (the number). `key` is required by React whenever rendering a
           list of elements from an array, so it can track each one
           individually across re-renders. */}
@@ -90,7 +101,7 @@ export function Axes() {
         </group>
       ))}
       <Billboard position={[MIN - 1, 0, MAX]}>
-        <Text {...axisLabelProps}>invel-pps</Text>
+        <Text {...axisLabelProps}>{axisLabels.y}</Text>
       </Billboard>
 
       {TICKS.map((t) => (
@@ -109,7 +120,7 @@ export function Axes() {
         </group>
       ))}
       <Billboard position={[0, MIN - 0.55, MAX]}>
-        <Text {...axisLabelProps}>orig-bytes</Text>
+        <Text {...axisLabelProps}>{axisLabels.x}</Text>
       </Billboard>
 
       {TICKS.map((t) => (
@@ -128,7 +139,7 @@ export function Axes() {
         </group>
       ))}
       <Billboard position={[MAX + 1, MIN, 0]}>
-        <Text {...axisLabelProps}>invel-bpp</Text>
+        <Text {...axisLabelProps}>{axisLabels.z}</Text>
       </Billboard>
     </group>
   );
