@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
 import { useStore } from "./store/useStore";
@@ -35,6 +37,11 @@ function App() {
   // target back to the world origin, independent of PointCloud.tsx's
   // onClick handler, which is the only other place this setter is called.
   const setPivot = useStore((state) => state.setPivot);
+  // Ref to the pivot cross marker group below. CameraRig drives its
+  // position imperatively every frame (in lockstep with the camera), so
+  // the marker is intentionally NOT bound to the `pivot` state — a state
+  // binding lags a frame behind the imperative camera movement.
+  const pivotMarkerRef = useRef<Group>(null);
   return (
     <div className="w-screen h-screen bg-slate-900 relative">
       {/* 
@@ -234,7 +241,7 @@ function App() {
             PointCloud: Mapped 3D nodes from dataset
             Axes: 3D labels (Billboarded to stay readable)
         */}
-        <CameraRig />
+        <CameraRig pivotMarkerRef={pivotMarkerRef} />
         <PointCloud />
         <Axes />
 
@@ -256,8 +263,12 @@ function App() {
             whose arms foreshorten with perspective, which doubles as an
             orientation cue for which way each axis runs while traversing
             the pivot with the arrow keys.
+
+            Position is driven imperatively by CameraRig via pivotMarkerRef
+            (not `position={pivot}`), so it tracks the camera in the exact
+            same frame instead of lagging a frame behind on React state.
         */}
-        <group position={pivot}>
+        <group ref={pivotMarkerRef}>
           <Line
             points={[
               [-0.15, 0, 0],
