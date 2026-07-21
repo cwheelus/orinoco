@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import * as THREE from "three";
@@ -100,11 +100,15 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
   // for an external one on the next frame). Called after every place that
   // moves livePivot directly: pan dragging, keyboard traversal, and the
   // external-pivot-change branch below — previously each repeated both
-  // lines inline.
-  const syncPivot = () => {
+  // lines inline. Wrapped in useCallback (rather than a plain const) so
+  // it has a stable identity across renders — the pointer-drag effect
+  // below calls it inside a closure and needs it in its dependency array;
+  // without useCallback, a new function on every render would make that
+  // dependency array pointless (always "changed").
+  const syncPivot = useCallback(() => {
     setPivot([livePivot.current.x, livePivot.current.y, livePivot.current.z]);
     lastStorePivot.current.copy(livePivot.current);
-  };
+  }, [setPivot]);
 
   // Registers raw browser keyboard listeners once, when this component
   // first mounts. We use native addEventListener here instead of React
@@ -222,7 +226,7 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
       canvas.removeEventListener("pointercancel", stopPanning);
       canvas.removeEventListener("lostpointercapture", stopPanning);
     };
-  }, [camera, gl, setPivot]);
+  }, [camera, gl, setPivot, syncPivot]);
 
   // useFrame (from R3F) runs this callback once per rendered frame —
   // typically 60 times per second. `delta` is the time in seconds since
