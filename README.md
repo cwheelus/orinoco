@@ -297,7 +297,7 @@ orinoco/
 │   │   │   └── computeGridSpace() — derives plotting bounds and
 │   │   │       per-axis scaling for a given dataset
 │   │   ├── classColors.ts
-│   │   │   └── Single source of truth for classification -> color mapping
+│   │   │   └── Single source of truth for classification → color mapping
 │   │   └── parseCSV.ts
 │   │       └── Auto-detecting CSV parser — classifies columns,
 │   │           maps them to X/Y/Z/uid/class, validates and reports errors
@@ -336,13 +336,13 @@ The application follows this interaction model:
 ```text
 User Interaction
         |
-        v
+        ↓
 React Three Fiber Events
         |
-        v
+        ↓
 Zustand Global State
         |
-        v
+        ↓
 HUD Updates
 ```
 
@@ -492,11 +492,11 @@ Loaded datasets, whether bundled or CSV, share the same internal shape:
 For the bundled dataset, the mapping is:
 
 ```text
-x (orig_bytes)  -> X axis
-y (invel_pps)   -> Y axis
-z (invel_bpp)   -> Z axis
-className       -> Visualization category
-uid             -> Point identifier displayed in the HUD
+x (orig_bytes)  → X axis
+y (invel_pps)   → Y axis
+z (invel_bpp)   → Z axis
+className       → Visualization category
+uid             → Point identifier displayed in the HUD
 ```
 
 For a loaded CSV, this same shape is produced by `parseCSV.ts`'s auto-detection — see **Dynamic Dataset Loading**.
@@ -644,7 +644,7 @@ Project Orinoco is a functional MVP demonstrating:
 
 # Project Team
 
-(c)2026 Sentient Solutions
+©2026 Sentient Solutions
 
 Developers:
 
