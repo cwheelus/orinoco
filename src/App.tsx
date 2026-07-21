@@ -186,35 +186,51 @@ function App() {
                     {hoveredPoint.className}
                   </span>
                 </div>
-                <div className="pt-1">
-                  {/* Labels now come from axisLabels (the real column
-                      names for whatever dataset is loaded) instead of
+                <div className="pt-1 space-y-1">
+                  {/* Labels come from axisLabels (the real column names
+                      for whatever dataset is loaded) instead of
                       hardcoded E/C/W letters — keeps this panel
                       consistent with what Axes.tsx shows on the grid
-                      itself, for any dataset, not just the original one. */}
+                      itself, for any dataset, not just the original one.
+                      Each metric is its own label-left/value-right row,
+                      matching the UID and Classification rows above,
+                      rather than a 3-column grid where the axis name
+                      only appeared in a header line and hover tooltip —
+                      that made it easy to misread which value belonged
+                      to which axis at a glance.
+                      Mapped over ["x","y","z"] rather than three
+                      hand-written blocks: the three rows were
+                      structurally identical (same classNames, same
+                      .toFixed(3) call), differing only in which axis
+                      key they read — copy-pasting that three times
+                      meant any future styling change had to be applied
+                      in three places and risked drifting out of sync.
+                      Border check uses arr.length - 1 (not the literal
+                      2) so the "no border on the last row" rule stays
+                      correct even if this array's size ever changes,
+                      rather than depending on someone remembering to
+                      update a hardcoded index alongside it. */}
                   <span className="text-white/40 text-[10px] block mb-1">
-                    Metrics ({axisLabels.x}, {axisLabels.y}, {axisLabels.z})
+                    Metrics
                   </span>
-                  <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-white/80">
+                  {(["x", "y", "z"] as const).map((axis, i, arr) => (
                     <div
-                      className="bg-white/5 p-1 rounded"
-                      title={axisLabels.x}
+                      key={axis}
+                      className={`flex justify-between pb-1 ${
+                        i < arr.length - 1 ? "border-b border-white/5" : ""
+                      }`}
                     >
-                      {hoveredPoint.x.toFixed(3)}
+                      <span
+                        className="text-white/40 text-[10px] truncate max-w-[60%]"
+                        title={axisLabels[axis]}
+                      >
+                        {axisLabels[axis]}
+                      </span>
+                      <span className="text-white font-mono text-xs">
+                        {hoveredPoint[axis].toFixed(3)}
+                      </span>
                     </div>
-                    <div
-                      className="bg-white/5 p-1 rounded"
-                      title={axisLabels.y}
-                    >
-                      {hoveredPoint.y.toFixed(3)}
-                    </div>
-                    <div
-                      className="bg-white/5 p-1 rounded"
-                      title={axisLabels.z}
-                    >
-                      {hoveredPoint.z.toFixed(3)}
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
