@@ -8,6 +8,20 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
+import type { AxisKey, FilterOp } from "../store/useStore";
+import { classColors, DEFAULT_CLASS_COLOR } from "../lib/classColors";
+
+// Operator dropdown options for the numeric filters, in display order.
+// "off" (—) means the axis isn't filtered.
+const FILTER_OPS: { value: FilterOp; label: string }[] = [
+  { value: "off", label: "—" },
+  { value: "gt", label: ">" },
+  { value: "gte", label: "≥" },
+  { value: "lt", label: "<" },
+  { value: "lte", label: "≤" },
+  { value: "eq", label: "=" },
+  { value: "between", label: "><" },
+];
 
 /**
  * Toolbar.tsx
@@ -50,22 +64,30 @@ const DEFAULT_OPEN_WIDTH = 224;
 // down to an unreadably thin sliver, or out wider than is useful.
 const MIN_OPEN_WIDTH = 120;
 const MAX_OPEN_WIDTH = 400;
-// If a resize drag brings the content pane below this width, the
-// panel snaps fully shut (width -> 0, activePage -> null) instead of
-// floor-clamping at MIN_OPEN_WIDTH. Without this, dragging the border
-// toward the icon strip could never actually close the panel — it
-// would just stop at 120px and stay stuck open. This threshold is
-// smaller than MIN_OPEN_WIDTH specifically so there's a small "dead
-// zone" where continuing to drag closed genuinely closes it, rather
-// than the panel oscillating between snapping shut and re-opening at
-// the same cursor position.
+// On RELEASE, if the content pane is narrower than this, the panel
+// finishes closing (animates to width 0, activePage cleared) rather
+// than settling at MIN_OPEN_WIDTH. During the drag itself the pane now
+// tracks the cursor continuously all the way down to 0 (see
+// handleResizeMove) — this threshold only decides which way it settles
+// when you let go: below it closes, above it snaps up to MIN_OPEN_WIDTH.
+// Both settles animate (the transition is re-enabled on release), so
+// there's no crude snap-shut mid-drag.
 const CLOSE_THRESHOLD = 60;
 
 export function Toolbar({ onFileSelected }: ToolbarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const setPivot = useStore((state) => state.setPivot);
   const gridVisible = useStore((state) => state.gridVisible);
+  const pointSizeScale = useStore((state) => state.pointSizeScale);
+  const setPointSizeScale = useStore((state) => state.setPointSizeScale);
   const toggleGrid = useStore((state) => state.toggleGrid);
+  const axisLabels = useStore((state) => state.axisLabels);
+  const availableClasses = useStore((state) => state.availableClasses);
+  const hiddenClasses = useStore((state) => state.hiddenClasses);
+  const numericFilters = useStore((state) => state.numericFilters);
+  const toggleClassHidden = useStore((state) => state.toggleClassHidden);
+  const setNumericFilter = useStore((state) => state.setNumericFilter);
+  const clearFilters = useStore((state) => state.clearFilters);
 
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
@@ -81,10 +103,25 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // width" are both valid states contentWidth needs to represent.
   const [contentWidth, setContentWidth] = useState(0);
   // Whether a resize drag is currently in progress. A ref (not
-  // useState) because it's only read inside the pointermove handler,
-  // never rendered — using state here would trigger a re-render on
-  // every single pointer movement during a drag, which isn't needed.
+  // useState) because it's read inside the pointermove hot path on
+  // every pointer movement — using state there would be needless churn.
   const isResizing = useRef(false);
+  // A SECOND, render-affecting flag for the same "is dragging" fact,
+  // used only to toggle the content pane's width transition (below).
+  // The pane keeps its 150ms width transition for smooth click
+  // open/close, but that transition must be OFF during a live drag —
+  // otherwise the width eases toward the cursor over 150ms instead of
+  // tracking it 1:1, which reads as laggy, chunky resizing. This is
+  // state (not the ref above) because the className depends on it, so
+  // it has to trigger a re-render; it only flips twice per drag
+  // (start/end), so the cost is negligible.
+  const [isDragging, setIsDragging] = useState(false);
+  // The content width as of the latest pointermove during a drag. Kept
+  // as a ref (updated alongside setContentWidth) so handleResizeEnd can
+  // read the final dragged width synchronously to decide how to settle
+  // — reading `contentWidth` state there would see a stale value, since
+  // the last setContentWidth of the drag may not have committed yet.
+  const latestWidth = useRef(0);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -118,7 +155,21 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // starts, default to the Data page so there's something to see
   // while resizing, rather than dragging open an empty content pane.
   const handleResizeStart = (e: React.PointerEvent) => {
+    // Suppress the browser's native text-selection gesture that a
+    // click-and-drag otherwise triggers — without this, dragging the
+    // handle sweeps a text selection across the HUD text elsewhere on
+    // the page. preventDefault cancels it at the source; setting
+    // body user-select to none is the cross-browser belt-and-suspenders,
+    // since selection is a document-level gesture that pointer capture
+    // (below) does nothing about. Both are undone in handleResizeEnd.
+    e.preventDefault();
+    document.body.style.userSelect = "none";
     isResizing.current = true;
+    setIsDragging(true);
+    // Seed latestWidth with the current width, so a click on the handle
+    // with no actual movement settles to where it already was (a no-op)
+    // rather than acting on a stale value from a previous drag.
+    latestWidth.current = contentWidth;
     e.currentTarget.setPointerCapture(e.pointerId);
     if (!activePage) setActivePage("data");
   };
@@ -132,26 +183,51 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // moves, only contentWidth (and therefore the content pane's outer
   // edge) tracks the cursor.
   //
-  // Below CLOSE_THRESHOLD, the panel snaps fully shut (width 0,
-  // activePage cleared) rather than clamping at MIN_OPEN_WIDTH — this
-  // is what actually makes "drag the border closed" work as a real
-  // way to close the panel, not just a way to shrink it to a minimum.
+  // The width tracks the cursor CONTINUOUSLY all the way down to 0 (no
+  // minimum-width clamp, no snap-to-closed) so the motion stays smooth
+  // and fully reversible as you approach the right edge — drag in and it
+  // shrinks to nothing, drag back out and it grows again. activePage is
+  // deliberately NOT cleared here mid-drag: the page content is hidden
+  // purely by the `contentWidth > 0` render guard, so a near-closed pane
+  // dragged back open shows its content again without losing the
+  // selection. The decision to actually finish closing vs. settle at a
+  // minimum width is deferred to release (handleResizeEnd).
   const handleResizeMove = useCallback((e: React.PointerEvent) => {
     if (!isResizing.current) return;
     const distanceFromRightEdge = window.innerWidth - e.clientX;
     const newWidth = distanceFromRightEdge - ICON_STRIP_WIDTH;
-    if (newWidth < CLOSE_THRESHOLD) {
-      setContentWidth(0);
-      setActivePage(null);
-      return;
-    }
-    setContentWidth(
-      Math.min(MAX_OPEN_WIDTH, Math.max(MIN_OPEN_WIDTH, newWidth)),
-    );
+    const clamped = Math.max(0, Math.min(MAX_OPEN_WIDTH, newWidth));
+    latestWidth.current = clamped;
+    setContentWidth(clamped);
   }, []);
 
   const handleResizeEnd = () => {
+    // Ignore pointerups that aren't ending an actual resize drag (e.g. a
+    // click that bubbled up from an icon button), so we don't re-settle
+    // the pane's width on unrelated interactions.
+    if (!isResizing.current) return;
     isResizing.current = false;
+    // Re-enable the width transition (isDragging -> false) BEFORE the
+    // settle setState below, so that whichever way the pane settles —
+    // closing to 0, or snapping up to MIN_OPEN_WIDTH — it animates
+    // smoothly instead of jumping. Both settles run in this same handler,
+    // so React batches them into one re-render with the transition on.
+    setIsDragging(false);
+    // Restore normal text selection now the drag is over (see
+    // handleResizeStart for why it was disabled).
+    document.body.style.userSelect = "";
+
+    const finalWidth = latestWidth.current;
+    if (finalWidth < CLOSE_THRESHOLD) {
+      // Released near the edge — finish closing.
+      setContentWidth(0);
+      setActivePage(null);
+    } else if (finalWidth < MIN_OPEN_WIDTH) {
+      // Released open but too narrow to be useful — settle up to the
+      // minimum usable width rather than leaving a cramped sliver.
+      setContentWidth(MIN_OPEN_WIDTH);
+    }
+    // Otherwise keep whatever width the drag ended on.
   };
 
   // Shared styling for an icon-strip button. `active` gets a brighter
@@ -285,7 +361,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           open/closed instead of the content just popping in and out
           instantly. */}
       <div
-        className="bg-black/70 backdrop-blur-sm border-l border-white/10 overflow-hidden transition-[width] duration-150"
+        className={`bg-black/70 backdrop-blur-sm border-l border-white/10 overflow-hidden ${
+          isDragging ? "" : "transition-[width] duration-150"
+        }`}
         style={{ width: contentWidth }}
       >
         {/* Actual page content only renders once the pane has real
@@ -306,20 +384,191 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   Data
                 </p>
                 <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Filters
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold text-white/70">
+                      Filters
+                    </p>
+                    {(hiddenClasses.length > 0 ||
+                      numericFilters.x.op !== "off" ||
+                      numericFilters.y.op !== "off" ||
+                      numericFilters.z.op !== "off") && (
+                      <button
+                        onClick={clearFilters}
+                        className="text-[9px] text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Clear all filters"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Class visibility: one toggle per class present in the
+                      dataset. Clicking hides/shows that class's points. */}
+                  <p className="text-[9px] uppercase tracking-wide text-white/40 mb-1">
+                    Classes
                   </p>
-                  <p className="text-[10px] text-white/40">
-                    Filter by classification and value range — coming soon.
+                  <div className="space-y-0.5 mb-2">
+                    {availableClasses.map((className) => {
+                      const hidden = hiddenClasses.includes(className);
+                      return (
+                        <button
+                          key={className}
+                          onClick={() => toggleClassHidden(className)}
+                          className={`w-full flex items-center gap-2 px-1 py-0.5 rounded hover:bg-white/5 transition-colors ${
+                            hidden ? "opacity-40" : ""
+                          }`}
+                          title={hidden ? "Show class" : "Hide class"}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-sm shrink-0"
+                            style={{
+                              backgroundColor:
+                                classColors[className] || DEFAULT_CLASS_COLOR,
+                            }}
+                          />
+                          <span className="text-[10px] text-white/80 flex-1 text-left truncate">
+                            {className}
+                          </span>
+                          {hidden ? (
+                            <EyeOff size={11} className="text-white/40" />
+                          ) : (
+                            <Eye size={11} className="text-white/60" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Numeric filters: one operator dropdown + value box
+                      per axis, comparing the point's RAW value on that
+                      axis (matching the axis tick labels). */}
+                  <p className="text-[9px] uppercase tracking-wide text-white/40 mb-1">
+                    Value
                   </p>
+                  <div className="space-y-1">
+                    {(["x", "y", "z"] as AxisKey[]).map((axis) => {
+                      const f = numericFilters[axis];
+                      return (
+                        <div key={axis} className="flex items-center gap-1">
+                          <span
+                            className="text-[9px] font-mono text-white/50 w-14 truncate shrink-0"
+                            title={axisLabels[axis]}
+                          >
+                            {axisLabels[axis]}
+                          </span>
+                          <select
+                            value={f.op}
+                            onChange={(e) =>
+                              setNumericFilter(axis, {
+                                ...f,
+                                op: e.target.value as FilterOp,
+                              })
+                            }
+                            className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 outline-none focus:bg-white/20 shrink-0"
+                            aria-label={`${axisLabels[axis]} operator`}
+                          >
+                            {FILTER_OPS.map((o) => (
+                              <option
+                                key={o.value}
+                                value={o.value}
+                                className="bg-slate-800"
+                              >
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          {f.op === "between" ? (
+                            // Range mode: two boxes (min / max). Either
+                            // left blank acts as a single-sided bound —
+                            // see passesNumeric in PointCloud.tsx.
+                            <div className="flex items-center gap-1 flex-1 min-w-0">
+                              <input
+                                type="number"
+                                value={f.value}
+                                placeholder="min"
+                                onChange={(e) =>
+                                  setNumericFilter(axis, {
+                                    ...f,
+                                    value: e.target.value,
+                                  })
+                                }
+                                className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                                aria-label={`${axisLabels[axis]} min`}
+                              />
+                              <span className="text-white/30 text-[9px] shrink-0">
+                                –
+                              </span>
+                              <input
+                                type="number"
+                                value={f.value2}
+                                placeholder="max"
+                                onChange={(e) =>
+                                  setNumericFilter(axis, {
+                                    ...f,
+                                    value2: e.target.value,
+                                  })
+                                }
+                                className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                                aria-label={`${axisLabels[axis]} max`}
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              value={f.value}
+                              disabled={f.op === "off"}
+                              placeholder="value"
+                              onChange={(e) =>
+                                setNumericFilter(axis, {
+                                  ...f,
+                                  value: e.target.value,
+                                })
+                              }
+                              className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 disabled:opacity-40 font-mono"
+                              aria-label={`${axisLabels[axis]} value`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Point size scaler
-                  </p>
-                  <p className="text-[10px] text-white/40">
-                    Adjust rendered point size for dense datasets — coming soon.
-                  </p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold text-white/70">
+                      Point size
+                    </p>
+                    <span className="text-[10px] font-mono text-white/50 tabular-nums">
+                      {pointSizeScale.toFixed(2)}×
+                    </span>
+                  </div>
+                  {/* Multiplier on the auto-computed (count-based) point
+                      radius — see PointCloud.tsx. 1× = automatic; drag
+                      down to declutter dense clouds, up to emphasize
+                      sparse data or make points easier to click. */}
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={4}
+                    step={0.05}
+                    value={pointSizeScale}
+                    onChange={(e) =>
+                      setPointSizeScale(parseFloat(e.target.value))
+                    }
+                    className="w-full accent-blue-500 cursor-pointer"
+                    aria-label="Point size"
+                  />
+                  <div className="flex justify-between text-[9px] text-white/30 mt-0.5">
+                    <span>Smaller</span>
+                    <button
+                      onClick={() => setPointSizeScale(1)}
+                      className="hover:text-white/70 transition-colors"
+                      title="Reset to automatic size"
+                    >
+                      Reset
+                    </button>
+                    <span>Larger</span>
+                  </div>
                 </div>
               </>
             )}

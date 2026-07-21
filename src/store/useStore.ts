@@ -26,6 +26,43 @@ const DEFAULT_AXIS_LABELS: AxisLabels = {
   z: "invel_bpp",
 };
 
+// A single numeric filter on one axis. "off" means the axis isn't
+// filtered. "between" is an inclusive range using BOTH value (min) and
+// value2 (max); every other op is a single inequality using value only.
+// Values are kept as raw text-box strings so an in-progress entry like
+// "-" or "" doesn't get coerced to 0 mid-typing — PointCloud parses them
+// and ignores anything that isn't a finite number (which also makes a
+// "between" with only one box filled act as a single-sided bound).
+export type FilterOp = "off" | "gt" | "gte" | "lt" | "lte" | "eq" | "between";
+export interface NumericFilter {
+  op: FilterOp;
+  value: string; // single-op operand, or the range MIN for "between"
+  value2: string; // the range MAX for "between" (unused by single ops)
+}
+export interface NumericFilters {
+  x: NumericFilter;
+  y: NumericFilter;
+  z: NumericFilter;
+}
+export type AxisKey = "x" | "y" | "z";
+
+const OFF_FILTER: NumericFilter = { op: "off", value: "", value2: "" };
+const NO_NUMERIC_FILTERS: NumericFilters = {
+  x: { ...OFF_FILTER },
+  y: { ...OFF_FILTER },
+  z: { ...OFF_FILTER },
+};
+
+// The distinct class names present in a dataset, in first-seen order —
+// what the Data page's class-visibility list is built from. Computed
+// once per dataset (in setDataPoints / at init) rather than re-scanning
+// the (potentially 100k-row) dataset on every Toolbar render.
+function uniqueClasses(points: DataPoint[]): string[] {
+  const seen = new Set<string>();
+  for (const p of points) seen.add(p.className);
+  return [...seen];
+}
+
 interface VisualizerState {
   // The active dataset being rendered. Defaults to the bundled
   // data.json so the app still shows something on first load —
@@ -59,6 +96,25 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // User-controlled multiplier on the auto-computed point radius,
+  // driven by the "Point size" slider in the Toolbar's Data page. 1 =
+  // the automatic size; below 1 shrinks (declutter dense clouds),
+  // above 1 enlarges (emphasize sparse data / easier to click). The
+  // AUTOMATIC size already scales down with point count (see
+  // PointCloud.tsx); this is the analyst's manual override on top.
+  pointSizeScale: number;
+  // The distinct class names in the current dataset (first-seen order).
+  // Drives the Data page's class-visibility toggle list.
+  availableClasses: string[];
+  // Class names the analyst has hidden via the Data page. Points whose
+  // className is in here are filtered out of the render (see
+  // PointCloud.tsx). Stored as the HIDDEN set (rather than visible) so
+  // the default — nothing hidden — is just an empty array.
+  hiddenClasses: string[];
+  // Per-axis numeric filters (on the RAW data values, matching the axis
+  // tick labels). A point must satisfy every active axis filter to be
+  // shown. See PointCloud.tsx for how these combine with hiddenClasses.
+  numericFilters: NumericFilters;
   // Replaces the active dataset AND its derived grid geometry/labels
   // together, atomically. Called from App.tsx's CSV load handler once
   // parseCSV.ts successfully parses a file — labels come from
@@ -73,6 +129,17 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Sets the user point-size multiplier. Called from the Data page's
+  // "Point size" slider in the Toolbar.
+  setPointSizeScale: (v: number) => void;
+  // Toggles whether a class is hidden. Called from the Data page's
+  // per-class visibility buttons.
+  toggleClassHidden: (className: string) => void;
+  // Sets the numeric filter for one axis. Called from the Data page's
+  // per-axis operator dropdown + value box.
+  setNumericFilter: (axis: AxisKey, filter: NumericFilter) => void;
+  // Clears all class and numeric filters back to "show everything".
+  clearFilters: () => void;
 }
 
 export const useStore = create<VisualizerState>((set) => ({
@@ -87,6 +154,12 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Point size starts at the automatic size (no manual scaling).
+  pointSizeScale: 1,
+  // Filters start fully open — every class shown, no numeric filtering.
+  availableClasses: uniqueClasses(defaultData as DataPoint[]),
+  hiddenClasses: [],
+  numericFilters: NO_NUMERIC_FILTERS,
   setDataPoints: (dataPoints, axisLabels) =>
     set({
       dataPoints,
@@ -98,8 +171,29 @@ export const useStore = create<VisualizerState>((set) => ({
       gridSpace: computeGridSpace(dataPoints),
       pivot: [0, 0, 0],
       hoveredPoint: null,
+      // Recompute the class list for the new dataset, and reset all
+      // filters: a new file has different class names and value ranges,
+      // so carrying over the old dataset's hidden classes / numeric
+      // thresholds would filter against columns that no longer mean the
+      // same thing (and could silently hide everything).
+      availableClasses: uniqueClasses(dataPoints),
+      hiddenClasses: [],
+      numericFilters: NO_NUMERIC_FILTERS,
     }),
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
+  toggleClassHidden: (className) =>
+    set((state) => ({
+      hiddenClasses: state.hiddenClasses.includes(className)
+        ? state.hiddenClasses.filter((c) => c !== className)
+        : [...state.hiddenClasses, className],
+    })),
+  setNumericFilter: (axis, filter) =>
+    set((state) => ({
+      numericFilters: { ...state.numericFilters, [axis]: filter },
+    })),
+  clearFilters: () =>
+    set({ hiddenClasses: [], numericFilters: NO_NUMERIC_FILTERS }),
 }));
