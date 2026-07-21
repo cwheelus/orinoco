@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
 import { useStore } from "./store/useStore";
@@ -18,6 +19,13 @@ import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
  * - 3D Layer: React Three Fiber (R3F) for WebGL rendering
  * - State: Zustand store (useStore) for cross-component sync (pivoting,
  *   hovering, the active dataset, and its derived grid geometry/labels)
+ * - One exception to the store-driven pattern above: the pivot cross
+ *   marker (pivotMarkerRef, near the bottom of this component) is
+ *   driven imperatively by CameraRig every frame instead of reading
+ *   `pivot` from the store — a state-driven marker lagged a frame
+ *   behind the camera's own imperative movement, since store updates
+ *   commit asynchronously relative to useFrame's per-frame mutations.
+ *   See #23 for the full reasoning.
  *
  * This file renders two layers stacked on top of each other: a flat 2D
  * HTML layer (text, buttons, info panels) and a 3D <Canvas> layer
@@ -30,7 +38,10 @@ function App() {
   // "pivot": the point the camera currently orbits around. Starts at
   // the world origin (0,0,0) and updates when a data point is clicked
   // (see PointCloud.tsx's onClick handler), or when a CSV is loaded
-  // (setDataPoints resets it back to origin — see useStore.ts).
+  // (setDataPoints resets it back to origin — see useStore.ts). Read
+  // here for OrbitControls' target below; the pivot MARKER, by
+  // contrast, does not read this value directly — see pivotMarkerRef
+  // just below for why.
   const pivot = useStore((state) => state.pivot);
   // The data point object currently under the cursor, or null if
   // nothing is being hovered. Drives the conditional HUD panel below.
@@ -45,6 +56,12 @@ function App() {
   // Replaces the active dataset (and its derived grid geometry/axis
   // labels, computed together — see useStore.ts's setDataPoints).
   const setDataPoints = useStore((state) => state.setDataPoints);
+  // Ref to the pivot cross marker group below. CameraRig drives its
+  // position imperatively every frame (in lockstep with the camera), so
+  // the marker is intentionally NOT bound to the `pivot` state — a state
+  // binding lags a frame behind the imperative camera movement. (From
+  // #23's fix for marker lag.)
+  const pivotMarkerRef = useRef<Group>(null);
 
   // Transient, UI-only error state for a failed CSV load. Lives here
   // (not in the Zustand store) since it's purely local presentation
@@ -94,10 +111,10 @@ function App() {
   return (
     <div className="w-screen h-screen bg-slate-900 relative">
       {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
-          Rendered as its own fixed-position, draggable panel — NOT
-          nested inside the HUD's flex layout below — since its screen
-          position is self-managed (see Toolbar.tsx's `position` state)
-          rather than dictated by a parent flex/grid container. */}
+          Rendered as its own fixed-position panel — NOT nested inside
+          the HUD's flex layout below — since its screen position is
+          self-managed (docked + resizable, see Toolbar.tsx) rather
+          than dictated by a parent flex/grid container. */}
       <Toolbar onFileSelected={handleFileSelected} />
 
       {/* 
@@ -307,11 +324,13 @@ function App() {
 
         {/* 
             ENGINE COMPONENTS:
-            CameraRig: Custom keyboard logic for WASD
+            CameraRig: Custom keyboard logic for WASD + pivot traversal,
+              also drives the pivot marker imperatively via pivotMarkerRef
+              (see #23) so it tracks the camera with zero frame lag.
             PointCloud: Mapped 3D nodes from dataset
             Axes: 3D labels (Billboarded to stay readable)
         */}
-        <CameraRig />
+        <CameraRig pivotMarkerRef={pivotMarkerRef} />
         <PointCloud />
         <Axes />
 
@@ -333,8 +352,12 @@ function App() {
             whose arms foreshorten with perspective, which doubles as an
             orientation cue for which way each axis runs while traversing
             the pivot with the arrow keys.
+            Position is driven imperatively by CameraRig via pivotMarkerRef
+            (not `position={pivot}`), so it tracks the camera in the exact
+            same frame instead of lagging a frame behind on React state
+            (see #23).
         */}
-        <group position={pivot}>
+        <group ref={pivotMarkerRef}>
           <Line
             points={[
               [-0.15, 0, 0],

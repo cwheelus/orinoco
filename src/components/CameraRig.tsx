@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import * as THREE from "three";
@@ -40,28 +40,41 @@ const heldKeys: Record<string, boolean> = {
   shift: false,
 };
 
-// CameraRig listens for WASD keyboard input and moves the camera every
-// frame accordingly. It renders no visible output itself (returns null)
-// — its only job is to mutate the camera's position/orientation over
-// time as a side effect.
-export function CameraRig() {
+interface CameraRigProps {
+  // Ref to the pivot cross marker group (rendered in App.tsx). CameraRig
+  // moves it imperatively every frame so it stays in exact lockstep with
+  // the camera. Binding the marker to React state instead made it lag a
+  // frame or more behind: state updates commit asynchronously, after this
+  // frame loop has already moved the camera imperatively.
+  pivotMarkerRef: RefObject<THREE.Group | null>;
+}
+
+// CameraRig listens for WASD + arrow/space/shift keyboard input and moves
+// the camera and pivot every frame accordingly. It renders no visible
+// output itself (returns null) — its only job is to mutate the camera and
+// the pivot marker's position/orientation over time as a side effect.
+export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
   // useThree() gives access to the R3F scene's shared objects — here we
   // only need the active camera, which we'll mutate directly below.
   const { camera } = useThree();
-  // The point in 3D space the camera should orbit around and look at.
-  // Read from the shared Zustand store so it stays in sync with
-  // PointCloud.tsx, which is what actually updates this value on click.
-  const pivot = useStore((state) => state.pivot);
-  // Setter for the pivot — the arrow/space/shift keys below move the
-  // pivot itself (unlike WASD, which moves the camera around it).
+  // Setter for the pivot. Its identity is stable, so reading it via the
+  // hook does NOT re-render this component. We deliberately do not
+  // subscribe to `pivot` itself — that would re-render CameraRig on every
+  // frame during traversal. The live pivot is read imperatively from the
+  // store inside useFrame instead (via useStore.getState()).
   const setPivot = useStore((state) => state.setPivot);
 
-  // The pivot position as of the previous frame. Comparing against it
-  // each frame is how we detect that the pivot moved (e.g. the user
-  // clicked a data point) so the camera can be translated by the same
-  // offset — keeping its rotation fixed instead of snapping to face the
-  // new pivot from its old position.
-  const prevPivot = useRef(new THREE.Vector3(...pivot));
+  // The authoritative pivot position during the frame loop. Every camera
+  // calculation AND the marker read from this single value, so they can
+  // never disagree (which is what eliminates the marker lag). Seeded from
+  // the store's current value at mount.
+  const livePivot = useRef(
+    new THREE.Vector3(...useStore.getState().pivot),
+  );
+  // The store's pivot value as of the previous frame. Used to detect
+  // *external* pivot changes (a data-point click, the reset button) as
+  // opposed to our own per-frame writes from arrow traversal.
+  const lastStorePivot = useRef(livePivot.current.clone());
 
   // Registers raw browser keyboard listeners once, when this component
   // first mounts. We use native addEventListener here instead of React
@@ -95,21 +108,26 @@ export function CameraRig() {
   // frame rate (so it moves at the same real-world speed whether the
   // browser renders at 30fps or 144fps).
   useFrame((_, delta) => {
-    // Converts the plain [x, y, z] array from the store into a
-    // THREE.Vector3, which supports the vector math methods used below.
-    const pivotVector = new THREE.Vector3(...pivot);
-
-    // 0a. PIVOT FOLLOW (external changes, e.g. clicking a data point)
-    // If the pivot moved since last frame, translate the camera by that
-    // same offset. A pure translation preserves the camera's rotation —
-    // the new pivot lands at the exact screen position the old one held,
-    // rather than the camera whipping around to face it. (This is what
-    // satisfies "changing the pivot must not change camera rotation".)
-    if (!prevPivot.current.equals(pivotVector)) {
+    // 0a. EXTERNAL PIVOT CHANGE (clicking a data point, the reset button)
+    // Read the store imperatively — the true current value, unaffected by
+    // React re-render timing (the reason the marker used to lag). If it
+    // differs from what we last observed, another component moved the
+    // pivot; translate the camera by that same offset. A pure translation
+    // preserves the camera's rotation — the new pivot lands at the exact
+    // screen position the old one held, rather than the camera whipping
+    // around to face it.
+    const [sx, sy, sz] = useStore.getState().pivot;
+    if (
+      sx !== lastStorePivot.current.x ||
+      sy !== lastStorePivot.current.y ||
+      sz !== lastStorePivot.current.z
+    ) {
+      const store = new THREE.Vector3(sx, sy, sz);
       camera.position.add(
-        new THREE.Vector3().subVectors(pivotVector, prevPivot.current),
+        new THREE.Vector3().subVectors(store, livePivot.current),
       );
-      prevPivot.current.copy(pivotVector);
+      livePivot.current.copy(store);
+      lastStorePivot.current.copy(store);
     }
 
     // 0b. PIVOT TRAVERSAL (arrows / space / shift)
@@ -117,9 +135,10 @@ export function CameraRig() {
     //   Left/Right  -> x (orig-bytes axis)
     //   Space/Shift -> y (invel-pps axis: space rises, shift descends)
     //   Up/Down     -> z (invel-bpp axis)
-    // The camera is moved by the same offset in the same frame (same
-    // rotation-preserving translation as 0a), and prevPivot is updated
-    // immediately so 0a doesn't re-apply this movement next frame.
+    // The live pivot and camera move together by the same offset (a
+    // rotation-preserving translation). We record the write into
+    // lastStorePivot immediately so step 0a doesn't mistake our own
+    // change for an external one next frame.
     const move = new THREE.Vector3(
       (heldKeys.arrowright ? 1 : 0) - (heldKeys.arrowleft ? 1 : 0),
       (heldKeys[" "] ? 1 : 0) - (heldKeys.shift ? 1 : 0),
@@ -127,10 +146,17 @@ export function CameraRig() {
     );
     if (move.lengthSq() > 0) {
       move.multiplyScalar(PIVOT_SPEED * delta);
-      pivotVector.add(move);
+      livePivot.current.add(move);
       camera.position.add(move);
-      prevPivot.current.copy(pivotVector);
-      setPivot([pivotVector.x, pivotVector.y, pivotVector.z]);
+      // Sync the store so the HUD and OrbitControls target follow. The
+      // marker no longer depends on this (it's driven imperatively in
+      // step 4), so the async commit can't reintroduce lag.
+      setPivot([
+        livePivot.current.x,
+        livePivot.current.y,
+        livePivot.current.z,
+      ]);
+      lastStorePivot.current.copy(livePivot.current);
     }
 
     // 1. ZOOM logic (W/S)
@@ -140,7 +166,7 @@ export function CameraRig() {
     // position moves the camera along that line — toward the pivot for
     // W, away from it for S (negative scale).
     const direction = new THREE.Vector3()
-      .subVectors(pivotVector, camera.position)
+      .subVectors(livePivot.current, camera.position)
       .normalize();
     if (heldKeys.w)
       camera.position.addScaledVector(direction, MOVE_SPEED * delta);
@@ -158,7 +184,7 @@ export function CameraRig() {
       // a point around another point in 3D.
       const relativePos = new THREE.Vector3().subVectors(
         camera.position,
-        pivotVector,
+        livePivot.current,
       );
       const angle = ROTATION_SPEED * delta * (heldKeys.a ? 1 : -1);
 
@@ -169,7 +195,7 @@ export function CameraRig() {
 
       // Add the rotated relative position back onto the pivot to get
       // the camera's new absolute position in the scene.
-      camera.position.copy(pivotVector).add(relativePos);
+      camera.position.copy(livePivot.current).add(relativePos);
     }
 
     // 3. Always look at the pivot
@@ -180,7 +206,12 @@ export function CameraRig() {
     // both systems mutate the camera independently within the same
     // frame loop, they can drift out of sync with each other — see
     // issue #5/#7 for the planned fix.
-    camera.lookAt(pivotVector);
+    camera.lookAt(livePivot.current);
+
+    // 4. Drive the pivot cross marker imperatively, from the same live
+    // value the camera uses — so the marker moves in the exact same frame
+    // as the camera, with no React-state round-trip to lag behind.
+    pivotMarkerRef.current?.position.copy(livePivot.current);
   });
 
   return null;
