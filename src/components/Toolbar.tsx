@@ -8,6 +8,20 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
+import type { AxisKey, FilterOp } from "../store/useStore";
+import { classColors, DEFAULT_CLASS_COLOR } from "../lib/classColors";
+
+// Operator dropdown options for the numeric filters, in display order.
+// "off" (—) means the axis isn't filtered.
+const FILTER_OPS: { value: FilterOp; label: string }[] = [
+  { value: "off", label: "—" },
+  { value: "gt", label: ">" },
+  { value: "gte", label: "≥" },
+  { value: "lt", label: "<" },
+  { value: "lte", label: "≤" },
+  { value: "eq", label: "=" },
+  { value: "between", label: "><" },
+];
 
 /**
  * Toolbar.tsx
@@ -67,6 +81,13 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const setPointSizeScale = useStore((state) => state.setPointSizeScale);
   const toggleGrid = useStore((state) => state.toggleGrid);
+  const axisLabels = useStore((state) => state.axisLabels);
+  const availableClasses = useStore((state) => state.availableClasses);
+  const hiddenClasses = useStore((state) => state.hiddenClasses);
+  const numericFilters = useStore((state) => state.numericFilters);
+  const toggleClassHidden = useStore((state) => state.toggleClassHidden);
+  const setNumericFilter = useStore((state) => state.setNumericFilter);
+  const clearFilters = useStore((state) => state.clearFilters);
 
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
@@ -363,12 +384,154 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   Data
                 </p>
                 <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Filters
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold text-white/70">
+                      Filters
+                    </p>
+                    {(hiddenClasses.length > 0 ||
+                      numericFilters.x.op !== "off" ||
+                      numericFilters.y.op !== "off" ||
+                      numericFilters.z.op !== "off") && (
+                      <button
+                        onClick={clearFilters}
+                        className="text-[9px] text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Clear all filters"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Class visibility: one toggle per class present in the
+                      dataset. Clicking hides/shows that class's points. */}
+                  <p className="text-[9px] uppercase tracking-wide text-white/40 mb-1">
+                    Classes
                   </p>
-                  <p className="text-[10px] text-white/40">
-                    Filter by classification and value range — coming soon.
+                  <div className="space-y-0.5 mb-2">
+                    {availableClasses.map((className) => {
+                      const hidden = hiddenClasses.includes(className);
+                      return (
+                        <button
+                          key={className}
+                          onClick={() => toggleClassHidden(className)}
+                          className={`w-full flex items-center gap-2 px-1 py-0.5 rounded hover:bg-white/5 transition-colors ${
+                            hidden ? "opacity-40" : ""
+                          }`}
+                          title={hidden ? "Show class" : "Hide class"}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-sm shrink-0"
+                            style={{
+                              backgroundColor:
+                                classColors[className] || DEFAULT_CLASS_COLOR,
+                            }}
+                          />
+                          <span className="text-[10px] text-white/80 flex-1 text-left truncate">
+                            {className}
+                          </span>
+                          {hidden ? (
+                            <EyeOff size={11} className="text-white/40" />
+                          ) : (
+                            <Eye size={11} className="text-white/60" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Numeric filters: one operator dropdown + value box
+                      per axis, comparing the point's RAW value on that
+                      axis (matching the axis tick labels). */}
+                  <p className="text-[9px] uppercase tracking-wide text-white/40 mb-1">
+                    Value
                   </p>
+                  <div className="space-y-1">
+                    {(["x", "y", "z"] as AxisKey[]).map((axis) => {
+                      const f = numericFilters[axis];
+                      return (
+                        <div key={axis} className="flex items-center gap-1">
+                          <span
+                            className="text-[9px] font-mono text-white/50 w-14 truncate shrink-0"
+                            title={axisLabels[axis]}
+                          >
+                            {axisLabels[axis]}
+                          </span>
+                          <select
+                            value={f.op}
+                            onChange={(e) =>
+                              setNumericFilter(axis, {
+                                ...f,
+                                op: e.target.value as FilterOp,
+                              })
+                            }
+                            className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 outline-none focus:bg-white/20 shrink-0"
+                            aria-label={`${axisLabels[axis]} operator`}
+                          >
+                            {FILTER_OPS.map((o) => (
+                              <option
+                                key={o.value}
+                                value={o.value}
+                                className="bg-slate-800"
+                              >
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          {f.op === "between" ? (
+                            // Range mode: two boxes (min / max). Either
+                            // left blank acts as a single-sided bound —
+                            // see passesNumeric in PointCloud.tsx.
+                            <div className="flex items-center gap-1 flex-1 min-w-0">
+                              <input
+                                type="number"
+                                value={f.value}
+                                placeholder="min"
+                                onChange={(e) =>
+                                  setNumericFilter(axis, {
+                                    ...f,
+                                    value: e.target.value,
+                                  })
+                                }
+                                className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                                aria-label={`${axisLabels[axis]} min`}
+                              />
+                              <span className="text-white/30 text-[9px] shrink-0">
+                                –
+                              </span>
+                              <input
+                                type="number"
+                                value={f.value2}
+                                placeholder="max"
+                                onChange={(e) =>
+                                  setNumericFilter(axis, {
+                                    ...f,
+                                    value2: e.target.value,
+                                  })
+                                }
+                                className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                                aria-label={`${axisLabels[axis]} max`}
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              value={f.value}
+                              disabled={f.op === "off"}
+                              placeholder="value"
+                              onChange={(e) =>
+                                setNumericFilter(axis, {
+                                  ...f,
+                                  value: e.target.value,
+                                })
+                              }
+                              className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 disabled:opacity-40 font-mono"
+                              aria-label={`${axisLabels[axis]} value`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
