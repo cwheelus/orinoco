@@ -59,6 +59,13 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // User-controlled multiplier on the auto-computed point radius,
+  // driven by the "Point size" slider in the Toolbar's Data page. 1 =
+  // the automatic size; below 1 shrinks (declutter dense clouds),
+  // above 1 enlarges (emphasize sparse data / easier to click). The
+  // AUTOMATIC size already scales down with point count (see
+  // PointCloud.tsx); this is the analyst's manual override on top.
+  pointSizeScale: number;
   // Replaces the active dataset AND its derived grid geometry/labels
   // together, atomically. Called from App.tsx's CSV load handler once
   // parseCSV.ts successfully parses a file — labels come from
@@ -73,6 +80,9 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Sets the user point-size multiplier. Called from the Data page's
+  // "Point size" slider in the Toolbar.
+  setPointSizeScale: (v: number) => void;
 }
 
 export const useStore = create<VisualizerState>((set) => ({
@@ -87,6 +97,8 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Point size starts at the automatic size (no manual scaling).
+  pointSizeScale: 1,
   setDataPoints: (dataPoints, axisLabels) =>
     set({
       dataPoints,
@@ -102,4 +114,5 @@ export const useStore = create<VisualizerState>((set) => ({
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
 }));
