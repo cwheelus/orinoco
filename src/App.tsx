@@ -321,7 +321,14 @@ function App() {
           2. THE 3D CANVAS (RENDER ENGINE)
           'shadows' enabled for high fidelity (optional).
       */}
-      <Canvas shadows>
+      <Canvas
+        shadows
+        // Grab-cursor while the pan tool is active, so the viewport
+        // visually signals drag-to-pan is available even before the
+        // user starts dragging — otherwise the toolbar icon is the only
+        // indicator, and it's easy to miss. Default cursor otherwise.
+        style={{ cursor: activeTool === "pan" ? "grab" : "default" }}
+      >
         {/* Sets the camera's starting position before any user input.
             [5,4,5] keeps the -2..2 grid box comfortably in frame — an
             earlier value of [20,20,20] made the box look too small. */}
