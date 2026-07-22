@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import * as THREE from "three";
@@ -11,6 +11,16 @@ const ROTATION_SPEED = 1.5;
 // scene, in render-space units per second (the box is 4 units wide).
 const PIVOT_SPEED = 1.5;
 
+// World units panned per screen pixel, at PAN_REFERENCE_DISTANCE from the
+// pivot. Scaled by actual camera-to-pivot distance on every drag so
+// panning feels consistent whether zoomed in tight or pulled back.
+const PAN_REFERENCE_DISTANCE = 5;
+const PAN_SPEED_AT_REFERENCE = 0.003;
+
+// Shared axis vector, reused instead of allocating (0,1,0) fresh anywhere
+// it's needed (orbit rotation axis).
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
 // Keys whose browser default behavior (scrolling the page) must be
 // suppressed while the visualizer is driving them.
 const PREVENT_DEFAULT_KEYS = new Set([
@@ -22,11 +32,13 @@ const PREVENT_DEFAULT_KEYS = new Set([
 ]);
 
 // Tracks which movement keys are currently held down. This is a plain
-// object living outside the component (not useState), because updating
-// it doesn't need to trigger a React re-render — useFrame already reads
-// it fresh every frame regardless. Using useState here would cause
-// unnecessary re-renders on every keypress, and React's render cycle
-// isn't fast enough for smooth per-frame movement anyway.
+// object living outside the component (not useState/useRef) — there is
+// exactly one CameraRig instance in this app, so module-level storage
+// carries no real multi-instance risk, and it avoids re-render churn on
+// every keypress. Only the keys listed here are ever set to true (see
+// handleDown's allowlist check below) — this object doubles as that
+// allowlist, so an unrelated key (e.g. CapsLock, Escape) can't get added
+// as a stray property.
 const heldKeys: Record<string, boolean> = {
   w: false,
   a: false,
@@ -49,14 +61,16 @@ interface CameraRigProps {
   pivotMarkerRef: RefObject<THREE.Group | null>;
 }
 
-// CameraRig listens for WASD + arrow/space/shift keyboard input and moves
-// the camera and pivot every frame accordingly. It renders no visible
-// output itself (returns null) — its only job is to mutate the camera and
-// the pivot marker's position/orientation over time as a side effect.
+// CameraRig listens for WASD + arrow/space/shift keyboard input, and
+// (when the "pan" tool is active) mouse-drag panning, moving the camera
+// and pivot every frame accordingly. It renders no visible output itself
+// (returns null) — its only job is to mutate the camera and the pivot
+// marker's position/orientation over time as a side effect.
 export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
-  // useThree() gives access to the R3F scene's shared objects — here we
-  // only need the active camera, which we'll mutate directly below.
-  const { camera } = useThree();
+  // useThree() gives access to the R3F scene's shared objects — the
+  // active camera (mutated directly below) and the canvas DOM element
+  // (gl.domElement), which pointer-drag panning listens on directly.
+  const { camera, gl } = useThree();
   // Setter for the pivot. Its identity is stable, so reading it via the
   // hook does NOT re-render this component. We deliberately do not
   // subscribe to `pivot` itself — that would re-render CameraRig on every
@@ -68,13 +82,33 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
   // calculation AND the marker read from this single value, so they can
   // never disagree (which is what eliminates the marker lag). Seeded from
   // the store's current value at mount.
-  const livePivot = useRef(
-    new THREE.Vector3(...useStore.getState().pivot),
-  );
+  const livePivot = useRef(new THREE.Vector3(...useStore.getState().pivot));
   // The store's pivot value as of the previous frame. Used to detect
   // *external* pivot changes (a data-point click, the reset button) as
-  // opposed to our own per-frame writes from arrow traversal.
+  // opposed to our own per-frame writes from arrow traversal / panning.
   const lastStorePivot = useRef(livePivot.current.clone());
+
+  // Drag-to-pan state. Refs (not state) since they're written on every
+  // pointermove during a drag — using React state here would re-render
+  // on every pixel of mouse movement.
+  const isPanning = useRef(false);
+  const lastPointer = useRef({ x: 0, y: 0 });
+
+  // Pushes livePivot's current value out to the store (so the HUD and
+  // OrbitControls' target follow) and records it into lastStorePivot (so
+  // the external-change check in useFrame doesn't mistake our own write
+  // for an external one on the next frame). Called after every place that
+  // moves livePivot directly: pan dragging, keyboard traversal, and the
+  // external-pivot-change branch below — previously each repeated both
+  // lines inline. Wrapped in useCallback (rather than a plain const) so
+  // it has a stable identity across renders — the pointer-drag effect
+  // below calls it inside a closure and needs it in its dependency array;
+  // without useCallback, a new function on every render would make that
+  // dependency array pointless (always "changed").
+  const syncPivot = useCallback(() => {
+    setPivot([livePivot.current.x, livePivot.current.y, livePivot.current.z]);
+    lastStorePivot.current.copy(livePivot.current);
+  }, [setPivot]);
 
   // Registers raw browser keyboard listeners once, when this component
   // first mounts. We use native addEventListener here instead of React
@@ -83,13 +117,19 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
   useEffect(() => {
     const handleDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      // Only recognized movement keys are tracked — checking `key in
+      // heldKeys` first stops an arbitrary key (CapsLock, Escape, etc.)
+      // from getting added to the object as a new property.
+      if (!(key in heldKeys)) return;
       // Arrows and space normally scroll the page — swallow that so
       // pivot traversal doesn't also drag the viewport around.
       if (PREVENT_DEFAULT_KEYS.has(key)) e.preventDefault();
       heldKeys[key] = true;
     };
     const handleUp = (e: KeyboardEvent) => {
-      heldKeys[e.key.toLowerCase()] = false;
+      const key = e.key.toLowerCase();
+      if (!(key in heldKeys)) return;
+      heldKeys[key] = false;
     };
     window.addEventListener("keydown", handleDown);
     window.addEventListener("keyup", handleUp);
@@ -101,6 +141,92 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
       window.removeEventListener("keyup", handleUp);
     };
   }, []); // empty dependency array: run once on mount, never again
+
+  // Mouse-drag panning — active only while the "pan" tool is selected
+  // (see Toolbar.tsx's hand-tool toggle). Registered directly on the
+  // canvas element (gl.domElement), not window, so a drag that starts
+  // over the Toolbar/HUD doesn't also pan the scene.
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const stopPanning = (e: PointerEvent) => {
+      if (!isPanning.current) return;
+      isPanning.current = false;
+      // releasePointerCapture throws if the pointer ID was never
+      // captured (e.g. this fires from pointercancel/lostpointercapture
+      // rather than a normal pointerup) — guard defensively rather than
+      // letting a stray call break the drag-end cleanup.
+      if (canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (useStore.getState().activeTool !== "pan") return;
+      isPanning.current = true;
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+      canvas.setPointerCapture(e.pointerId);
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isPanning.current) return;
+      const dx = e.clientX - lastPointer.current.x;
+      const dy = e.clientY - lastPointer.current.y;
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+
+      // Camera's local right/up axes in world space — panning along
+      // these (rather than fixed world axes) keeps drag direction
+      // correct regardless of current orbit angle, same as Figma/Maps.
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+        camera.quaternion,
+      );
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+      // Scale pixel movement by camera-to-pivot distance, so panning
+      // feels consistent whether zoomed in tight or pulled back.
+      const distance = camera.position.distanceTo(livePivot.current);
+      const scale =
+        (PAN_SPEED_AT_REFERENCE * distance) / PAN_REFERENCE_DISTANCE;
+
+      // Grab-and-drag convention: dragging right/down should make the
+      // scene appear to slide right/down, which means the CAMERA moves
+      // left/up — opposite the drag direction.
+      const worldDelta = new THREE.Vector3()
+        .addScaledVector(right, -dx * scale)
+        .addScaledVector(up, dy * scale);
+
+      // Move camera and pivot together (a pure translation, no rotation
+      // change) — same rigid-translation pattern as arrow-key traversal
+      // below, which is what keeps this from fighting with the
+      // camera.lookAt() call in the main useFrame loop.
+      livePivot.current.add(worldDelta);
+      camera.position.add(worldDelta);
+      syncPivot();
+    };
+
+    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    // pointerup: normal end of a drag.
+    canvas.addEventListener("pointerup", stopPanning);
+    // pointercancel: the browser aborts the pointer sequence (e.g. a
+    // system gesture, pen entering hover, or an OS-level interruption)
+    // without a matching pointerup — without this, isPanning could get
+    // stuck true and the camera would keep "dragging" after the mouse
+    // button is no longer actually held.
+    canvas.addEventListener("pointercancel", stopPanning);
+    // lostpointercapture: fires whenever this element's pointer capture
+    // ends for any reason (including the two above, but also cases
+    // neither of them covers) — a second safety net for the same
+    // stuck-panning failure mode.
+    canvas.addEventListener("lostpointercapture", stopPanning);
+    return () => {
+      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerup", stopPanning);
+      canvas.removeEventListener("pointercancel", stopPanning);
+      canvas.removeEventListener("lostpointercapture", stopPanning);
+    };
+  }, [camera, gl, setPivot, syncPivot]);
 
   // useFrame (from R3F) runs this callback once per rendered frame —
   // typically 60 times per second. `delta` is the time in seconds since
@@ -136,9 +262,9 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     //   Space/Shift -> y (invel-pps axis: space rises, shift descends)
     //   Up/Down     -> z (invel-bpp axis)
     // The live pivot and camera move together by the same offset (a
-    // rotation-preserving translation). We record the write into
-    // lastStorePivot immediately so step 0a doesn't mistake our own
-    // change for an external one next frame.
+    // rotation-preserving translation). syncPivot() records the write
+    // immediately so step 0a doesn't mistake our own change for an
+    // external one next frame.
     const move = new THREE.Vector3(
       (heldKeys.arrowright ? 1 : 0) - (heldKeys.arrowleft ? 1 : 0),
       (heldKeys[" "] ? 1 : 0) - (heldKeys.shift ? 1 : 0),
@@ -148,15 +274,7 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
       move.multiplyScalar(PIVOT_SPEED * delta);
       livePivot.current.add(move);
       camera.position.add(move);
-      // Sync the store so the HUD and OrbitControls target follow. The
-      // marker no longer depends on this (it's driven imperatively in
-      // step 4), so the async commit can't reintroduce lag.
-      setPivot([
-        livePivot.current.x,
-        livePivot.current.y,
-        livePivot.current.z,
-      ]);
-      lastStorePivot.current.copy(livePivot.current);
+      syncPivot();
     }
 
     // 1. ZOOM logic (W/S)
@@ -168,10 +286,12 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     const direction = new THREE.Vector3()
       .subVectors(livePivot.current, camera.position)
       .normalize();
-    if (heldKeys.w)
+    if (heldKeys.w) {
       camera.position.addScaledVector(direction, MOVE_SPEED * delta);
-    if (heldKeys.s)
+    }
+    if (heldKeys.s) {
       camera.position.addScaledVector(direction, -MOVE_SPEED * delta);
+    }
 
     // 2. ORBIT logic (A/D)
     // Rather than moving in a straight line, this rotates the camera's
@@ -189,9 +309,9 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
       const angle = ROTATION_SPEED * delta * (heldKeys.a ? 1 : -1);
 
       // applyAxisAngle rotates a vector around a given axis by a given
-      // angle (in radians). (0,1,0) is the Y axis (straight up), so this
-      // spins relativePos horizontally around the pivot.
-      relativePos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+      // angle (in radians). WORLD_UP is the Y axis (straight up), so
+      // this spins relativePos horizontally around the pivot.
+      relativePos.applyAxisAngle(WORLD_UP, angle);
 
       // Add the rotated relative position back onto the pivot to get
       // the camera's new absolute position in the scene.

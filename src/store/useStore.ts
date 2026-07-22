@@ -45,6 +45,7 @@ export interface NumericFilters {
   z: NumericFilter;
 }
 export type AxisKey = "x" | "y" | "z";
+export type ActiveTool = "orbit" | "pan";
 
 const OFF_FILTER: NumericFilter = { op: "off", value: "", value2: "" };
 const NO_NUMERIC_FILTERS: NumericFilters = {
@@ -96,6 +97,11 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // Which navigation mode mouse-drag currently performs: "orbit" rotates
+  // around the pivot (default, via OrbitControls); "pan" translates the
+  // camera/pivot together instead (via CameraRig's drag handler). Toggled
+  // from the Toolbar's hand-tool button.
+  activeTool: ActiveTool;
   // User-controlled multiplier on the auto-computed point radius,
   // driven by the "Point size" slider in the Toolbar's Data page. 1 =
   // the automatic size; below 1 shrinks (declutter dense clouds),
@@ -129,6 +135,9 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
+  // toggle button.
+  setActiveTool: (tool: ActiveTool) => void;
   // Sets the user point-size multiplier. Called from the Data page's
   // "Point size" slider in the Toolbar.
   setPointSizeScale: (v: number) => void;
@@ -154,6 +163,9 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Orbit is the default drag behavior — matches prior versions where
+  // drag-to-rotate was the only option.
+  activeTool: "orbit",
   // Point size starts at the automatic size (no manual scaling).
   pointSizeScale: 1,
   // Filters start fully open — every class shown, no numeric filtering.
@@ -183,6 +195,7 @@ export const useStore = create<VisualizerState>((set) => ({
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>
     set((state) => ({

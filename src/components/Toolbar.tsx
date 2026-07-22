@@ -6,6 +6,8 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
+  Hand,
+  MousePointer2,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import type { AxisKey, FilterOp } from "../store/useStore";
@@ -81,6 +83,8 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const setPointSizeScale = useStore((state) => state.setPointSizeScale);
   const toggleGrid = useStore((state) => state.toggleGrid);
+  const activeTool = useStore((state) => state.activeTool);
+  const setActiveTool = useStore((state) => state.setActiveTool);
   const axisLabels = useStore((state) => state.axisLabels);
   const availableClasses = useStore((state) => state.availableClasses);
   const hiddenClasses = useStore((state) => state.hiddenClasses);
@@ -325,6 +329,30 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           title={gridVisible ? "Hide grid" : "Show grid"}
         >
           {gridVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+        </button>
+
+        {/* ACTION: toggle mouse-drag mode between orbit (rotate) and
+            pan (translate). Active state reflects which mode is
+            currently selected — "pan" lights up the hand icon; the
+            default "orbit" mode has no dedicated lit icon here, since
+            orbit is the baseline/original behavior, not a toggle-on
+            feature. See CameraRig.tsx for the actual drag handler,
+            and App.tsx where activeTool gates OrbitControls'
+            enableRotate. */}
+        <button
+          onClick={() => setActiveTool(activeTool === "pan" ? "orbit" : "pan")}
+          className={iconButtonClass(activeTool === "pan")}
+          title={
+            activeTool === "pan"
+              ? "Switch to orbit (rotate)"
+              : "Switch to pan (drag to move view)"
+          }
+        >
+          {activeTool === "pan" ? (
+            <Hand size={16} />
+          ) : (
+            <MousePointer2 size={16} />
+          )}
         </button>
 
         <div className="w-full h-[1px] bg-white/10 my-1" />

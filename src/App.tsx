@@ -43,6 +43,11 @@ function App() {
   // contrast, does not read this value directly — see pivotMarkerRef
   // just below for why.
   const pivot = useStore((state) => state.pivot);
+  // Which mouse-drag mode is active: "orbit" (default, rotates around the
+  // pivot) or "pan" (translates the camera/pivot instead — handled by
+  // CameraRig's drag listener, not OrbitControls). Also used below to
+  // disable OrbitControls' rotation while panning, and to swap the cursor.
+  const activeTool = useStore((state) => state.activeTool);
   // The data point object currently under the cursor, or null if
   // nothing is being hovered. Drives the conditional HUD panel below.
   const hoveredPoint = useStore((state) => state.hoveredPoint);
@@ -316,7 +321,14 @@ function App() {
           2. THE 3D CANVAS (RENDER ENGINE)
           'shadows' enabled for high fidelity (optional).
       */}
-      <Canvas shadows>
+      <Canvas
+        shadows
+        // Grab-cursor while the pan tool is active, so the viewport
+        // visually signals drag-to-pan is available even before the
+        // user starts dragging — otherwise the toolbar icon is the only
+        // indicator, and it's easy to miss. Default cursor otherwise.
+        style={{ cursor: activeTool === "pan" ? "grab" : "default" }}
+      >
         {/* Sets the camera's starting position before any user input.
             [5,4,5] keeps the -2..2 grid box comfortably in frame — an
             earlier value of [20,20,20] made the box look too small. */}
@@ -350,14 +362,24 @@ function App() {
         <PointCloud />
         <Axes />
 
-        {/* 
-            OrbitControls: Standard mouse rotation/pan.
-            'target={pivot}' ensures the mouse rotates around the currently
-            selected point. NOTE: this runs alongside CameraRig.tsx's own
-            camera.lookAt() call every frame — see the note in CameraRig.tsx
-            about the resulting drift issue (tracked in #5).
+        {/* OrbitControls: Mouse-drag rotation only — panning is handled
+            entirely by CameraRig's own pointer listener instead (see
+            CameraRig.tsx), not by OrbitControls' built-in pan, to avoid
+            two separate systems both trying to translate the camera.
+            'target={pivot}' ensures rotation orbits around the currently
+            selected point. enableRotate is gated on the active tool, so
+            drag-to-rotate is suppressed while the pan tool is selected —
+            the two mouse-drag modes are mutually exclusive, never both
+            live at once. NOTE: camera.lookAt() still runs every frame in
+            CameraRig.tsx alongside this component's own rotation — see
+            the note there about the resulting drift issue (tracked in #5).
         */}
-        <OrbitControls target={pivot} makeDefault />
+        <OrbitControls
+          target={pivot}
+          makeDefault
+          enableRotate={activeTool === "orbit"}
+          enablePan={false}
+        />
 
         {/*
             TACTICAL PIVOT MARKER:
