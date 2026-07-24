@@ -62,7 +62,11 @@ export function Axes() {
   // active dataset changes.
   const { DISPLAY_RANGE } = useStore((state) => state.gridSpace);
   const axisLabels = useStore((state) => state.axisLabels);
-
+  // Which axes' tick marks/numbers are currently hidden — toggled
+  // from the Toolbar's Grid page. The axis TITLE (column name) stays
+  // visible regardless; only the small perpendicular ticks and their
+  // numeric values are affected.
+  const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const tickLabelProps = {
     fontSize: 0.1,
     color: "#cccccc",
@@ -75,69 +79,70 @@ export function Axes() {
 
   return (
     <group>
-      {/* Y Axis — front-left outer edge, at x=MIN, z=MAX. We loop over
-          TICKS and render one <group> per tick value `t`, each
-          containing a small line (the tick mark) and a text label
-          (the number). `key` is required by React whenever rendering a
-          list of elements from an array, so it can track each one
-          individually across re-renders. */}
-      {TICKS.map((t) => (
-        <group key={`y-tick-${t}`}>
-          {/* A short horizontal line crossing the vertical edge at
+      {/* Only render this axis's ticks if it hasn't been hidden via the
+          Toolbar's tick-visibility toggle. */}
+      {!hiddenTickAxes.includes("y") &&
+        TICKS.map((t) => (
+          <group key={`y-tick-${t}`}>
+            {/* A short horizontal line crossing the vertical edge at
               height t — x and z stay fixed at the edge's position,
               only the tick's own start/end x shifts slightly to make
               a visible mark. */}
-          <Line
-            points={[
-              [MIN - TICK_LEN, t, MAX],
-              [MIN, t, MAX],
-            ]}
-            color="#999999"
-            lineWidth={1}
-          />
-          <Billboard position={[MIN - 0.3, t, MAX]}>
-            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.y)}</Text>
-          </Billboard>
-        </group>
-      ))}
+            <Line
+              points={[
+                [MIN - TICK_LEN, t, MAX],
+                [MIN, t, MAX],
+              ]}
+              color="#999999"
+              lineWidth={1}
+            />
+            <Billboard position={[MIN - 0.3, t, MAX]}>
+              <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.y)}</Text>
+            </Billboard>
+          </group>
+        ))}
       <Billboard position={[MIN - 1, 0, MAX]}>
         <Text {...axisLabelProps}>{axisLabels.y}</Text>
       </Billboard>
 
-      {TICKS.map((t) => (
-        <group key={`x-tick-${t}`}>
-          <Line
-            points={[
-              [t, MIN - TICK_LEN, MAX],
-              [t, MIN, MAX],
-            ]}
-            color="#999999"
-            lineWidth={1}
-          />
-          <Billboard position={[t, MIN - 0.3, MAX]}>
-            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.x)}</Text>
-          </Billboard>
-        </group>
-      ))}
+      {/* Same tick-visibility check as Y, above. */}
+      {!hiddenTickAxes.includes("x") &&
+        TICKS.map((t) => (
+          <group key={`x-tick-${t}`}>
+            <Line
+              points={[
+                [t, MIN - TICK_LEN, MAX],
+                [t, MIN, MAX],
+              ]}
+              color="#999999"
+              lineWidth={1}
+            />
+            <Billboard position={[t, MIN - 0.3, MAX]}>
+              <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.x)}</Text>
+            </Billboard>
+          </group>
+        ))}
       <Billboard position={[0, MIN - 0.55, MAX]}>
         <Text {...axisLabelProps}>{axisLabels.x}</Text>
       </Billboard>
 
-      {TICKS.map((t) => (
-        <group key={`z-tick-${t}`}>
-          <Line
-            points={[
-              [MAX + TICK_LEN, MIN, t],
-              [MAX, MIN, t],
-            ]}
-            color="#999999"
-            lineWidth={1}
-          />
-          <Billboard position={[MAX + 0.3, MIN, t]}>
-            <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.z)}</Text>
-          </Billboard>
-        </group>
-      ))}
+      {/* Same tick-visibility check as Y and X, above. */}
+      {!hiddenTickAxes.includes("z") &&
+        TICKS.map((t) => (
+          <group key={`z-tick-${t}`}>
+            <Line
+              points={[
+                [MAX + TICK_LEN, MIN, t],
+                [MAX, MIN, t],
+              ]}
+              color="#999999"
+              lineWidth={1}
+            />
+            <Billboard position={[MAX + 0.3, MIN, t]}>
+              <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.z)}</Text>
+            </Billboard>
+          </group>
+        ))}
       <Billboard position={[MAX + 1, MIN, 0]}>
         <Text {...axisLabelProps}>{axisLabels.z}</Text>
       </Billboard>
