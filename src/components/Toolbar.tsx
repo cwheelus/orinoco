@@ -620,50 +620,6 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                 </div>
               </>
             )}
-            {activePage === "grid" && (
-              <>
-                <p className="text-[10px] font-bold text-blue-400 uppercase">
-                  Grid
-                </p>
-                <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-1">
-                    Tick labels
-                  </p>
-                  {(["x", "y", "z"] as const).map((axis) => (
-                    <label
-                      key={axis}
-                      className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!hiddenTickAxes.includes(axis)}
-                        onChange={() => toggleTickAxis(axis)}
-                        className="accent-blue-500"
-                      />
-                      {axisLabels[axis]}
-                    </label>
-                  ))}
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Grid modes
-                  </p>
-                  <p className="text-[10px] text-white/40">
-                    Alternate grid layouts (e.g. axis-through-center) — coming
-                    soon.
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Scaling modes
-                  </p>
-                  <p className="text-[10px] text-white/40">
-                    Switch between independent per-axis and uniform scaling —
-                    coming soon.
-                  </p>
-                </div>
-              </>
-            )}
           </div>
         )}
       </div>
