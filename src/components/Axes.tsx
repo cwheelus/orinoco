@@ -117,7 +117,6 @@ export function Axes() {
       <Billboard position={[0, MAX + 0.8, 0]}>
         <Text {...axisLabelProps}>{axisLabels.y}</Text>
       </Billboard>
-
       {/* Same tick-visibility check as Y, above. */}
       {!hiddenTickAxes.includes("x") &&
         TICKS.map((t) => (
@@ -135,10 +134,10 @@ export function Axes() {
             </Billboard>
           </group>
         ))}
-      <Billboard position={[MAX + 0.8, MIN - 0.55, MAX]}>
+      // orig_bytes (line 138)
+      <Billboard position={[MIN - 1.5, MIN - 0.8, MAX]}>
         <Text {...axisLabelProps}>{axisLabels.x}</Text>
       </Billboard>
-
       {/* Same tick-visibility check as Y and X, above. */}
       {!hiddenTickAxes.includes("z") &&
         TICKS.map((t) => (
@@ -156,9 +155,59 @@ export function Axes() {
             </Billboard>
           </group>
         ))}
-      <Billboard position={[MAX + 1, MIN, MAX + 0.8]}>
+      <Billboard position={[MAX + 1, MIN - 0.8, MIN - 1.5]}>
         <Text {...axisLabelProps}>{axisLabels.z}</Text>
       </Billboard>
+      {/* Wall-edge Y ticks (in addition to the center-line Y axis
+          above, which stays untouched). Each of the two existing
+          walls gets its own Y reference on its OUTER vertical edge —
+          the one away from the shared corner where the walls meet —
+          matching the same tick+number style already used on the
+          floor's X/Z ticks. This gives a Y reading no matter which
+          wall is currently facing the camera, without altering the
+          center-line experiment. */}
+      {!hiddenTickAxes.includes("y") &&
+        TICKS.map((t) => (
+          <group key={`y-wall1-tick-${t}`}>
+            <Line
+              points={[
+                [MIN - TICK_LEN, t, MAX],
+                [MIN, t, MAX],
+              ]}
+              color="#999999"
+              lineWidth={1}
+            />
+            <Billboard position={[MIN - 0.3, t, MAX]}>
+              <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.y)}</Text>
+            </Billboard>
+          </group>
+        ))}
+      {!hiddenTickAxes.includes("y") &&
+        TICKS.map((t) => (
+          <group key={`y-wall2-tick-${t}`}>
+            <Line
+              points={[
+                [MAX + TICK_LEN, t, MIN],
+                [MAX, t, MIN],
+              ]}
+              color="#999999"
+              lineWidth={1}
+            />
+            <Billboard position={[MAX + 0.3, t, MIN]}>
+              <Text {...tickLabelProps}>{tickLabel(t, DISPLAY_RANGE.y)}</Text>
+            </Billboard>
+          </group>
+        ))}
+      {!hiddenTickAxes.includes("y") && (
+        <Billboard position={[MIN - 0.3, MAX + 0.8, MAX]}>
+          <Text {...axisLabelProps}>{axisLabels.y}</Text>
+        </Billboard>
+      )}
+      {!hiddenTickAxes.includes("y") && (
+        <Billboard position={[MAX + 0.3, MAX + 0.8, MIN]}>
+          <Text {...axisLabelProps}>{axisLabels.y}</Text>
+        </Billboard>
+      )}
     </group>
   );
 }
