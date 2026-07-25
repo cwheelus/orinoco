@@ -45,6 +45,7 @@ export interface NumericFilters {
   z: NumericFilter;
 }
 export type AxisKey = "x" | "y" | "z";
+export type ActiveTool = "orbit" | "pan";
 
 const OFF_FILTER: NumericFilter = { op: "off", value: "", value2: "" };
 const NO_NUMERIC_FILTERS: NumericFilters = {
@@ -96,6 +97,11 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // Which navigation mode mouse-drag currently performs: "orbit" rotates
+  // around the pivot (default, via OrbitControls); "pan" translates the
+  // camera/pivot together instead (via CameraRig's drag handler). Toggled
+  // from the Toolbar's hand-tool button.
+  activeTool: ActiveTool;
   // User-controlled multiplier on the auto-computed point radius,
   // driven by the "Point size" slider in the Toolbar's Data page. 1 =
   // the automatic size; below 1 shrinks (declutter dense clouds),
@@ -115,6 +121,15 @@ interface VisualizerState {
   // tick labels). A point must satisfy every active axis filter to be
   // shown. See PointCloud.tsx for how these combine with hiddenClasses.
   numericFilters: NumericFilters;
+  // Which axes' tick marks/numbers are currently hidden — independent
+  // per axis (e.g. hide Y's ticks while keeping X and Z visible).
+  // Modeled on hiddenClasses' array-of-hidden-keys pattern. Does not
+  // affect the axis TITLE (the column name label) — only the small
+  // perpendicular tick marks and their numeric values along that axis.
+  hiddenTickAxes: AxisKey[];
+  // Toggles whether an axis's tick marks/numbers are shown. Called
+  // from the Toolbar's Grid page tick-visibility checkboxes.
+  toggleTickAxis: (axis: AxisKey) => void;
   // Replaces the active dataset AND its derived grid geometry/labels
   // together, atomically. Called from App.tsx's CSV load handler once
   // parseCSV.ts successfully parses a file — labels come from
@@ -129,6 +144,9 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
+  // toggle button.
+  setActiveTool: (tool: ActiveTool) => void;
   // Sets the user point-size multiplier. Called from the Data page's
   // "Point size" slider in the Toolbar.
   setPointSizeScale: (v: number) => void;
@@ -154,28 +172,28 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Orbit is the default drag behavior — matches prior versions where
+  // drag-to-rotate was the only option.
+  activeTool: "orbit",
   // Point size starts at the automatic size (no manual scaling).
   pointSizeScale: 1,
   // Filters start fully open — every class shown, no numeric filtering.
   availableClasses: uniqueClasses(defaultData as DataPoint[]),
   hiddenClasses: [],
   numericFilters: NO_NUMERIC_FILTERS,
+  // All axes' tick marks/numbers visible by default. Unlike
+  // hiddenClasses/numericFilters, this is NOT reset in setDataPoints
+  // below — tick visibility is a display preference tied to X/Y/Z
+  // themselves (which always exist), not to a specific dataset's
+  // content, so there's no reason to clear it when a new CSV loads.
+  hiddenTickAxes: [],
   setDataPoints: (dataPoints, axisLabels) =>
     set({
       dataPoints,
       axisLabels,
-      // Recompute grid geometry for the NEW dataset here, not in the
-      // caller — keeps "loading a dataset" and "deriving its grid
-      // space" atomic, so no other code path can set dataPoints
-      // without also updating the geometry that depends on it.
       gridSpace: computeGridSpace(dataPoints),
       pivot: [0, 0, 0],
       hoveredPoint: null,
-      // Recompute the class list for the new dataset, and reset all
-      // filters: a new file has different class names and value ranges,
-      // so carrying over the old dataset's hidden classes / numeric
-      // thresholds would filter against columns that no longer mean the
-      // same thing (and could silently hide everything).
       availableClasses: uniqueClasses(dataPoints),
       hiddenClasses: [],
       numericFilters: NO_NUMERIC_FILTERS,
@@ -183,6 +201,7 @@ export const useStore = create<VisualizerState>((set) => ({
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>
     set((state) => ({
@@ -196,4 +215,10 @@ export const useStore = create<VisualizerState>((set) => ({
     })),
   clearFilters: () =>
     set({ hiddenClasses: [], numericFilters: NO_NUMERIC_FILTERS }),
+  toggleTickAxis: (axis) =>
+    set((state) => ({
+      hiddenTickAxes: state.hiddenTickAxes.includes(axis)
+        ? state.hiddenTickAxes.filter((a) => a !== axis)
+        : [...state.hiddenTickAxes, axis],
+    })),
 }));

@@ -6,6 +6,8 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
+  Hand,
+  MousePointer2,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import type { AxisKey, FilterOp } from "../store/useStore";
@@ -81,6 +83,8 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const setPointSizeScale = useStore((state) => state.setPointSizeScale);
   const toggleGrid = useStore((state) => state.toggleGrid);
+  const activeTool = useStore((state) => state.activeTool);
+  const setActiveTool = useStore((state) => state.setActiveTool);
   const axisLabels = useStore((state) => state.axisLabels);
   const availableClasses = useStore((state) => state.availableClasses);
   const hiddenClasses = useStore((state) => state.hiddenClasses);
@@ -88,7 +92,11 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const toggleClassHidden = useStore((state) => state.toggleClassHidden);
   const setNumericFilter = useStore((state) => state.setNumericFilter);
   const clearFilters = useStore((state) => state.clearFilters);
-
+  // Which axes' tick marks/numbers are currently hidden, and the
+  // setter to toggle one — drives the Grid page's tick-visibility
+  // checkboxes.
+  const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
+  const toggleTickAxis = useStore((state) => state.toggleTickAxis);
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
   const [activePage, setActivePage] = useState<PageKey | null>(null);
@@ -325,6 +333,30 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           title={gridVisible ? "Hide grid" : "Show grid"}
         >
           {gridVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+        </button>
+
+        {/* ACTION: toggle mouse-drag mode between orbit (rotate) and
+            pan (translate). Active state reflects which mode is
+            currently selected — "pan" lights up the hand icon; the
+            default "orbit" mode has no dedicated lit icon here, since
+            orbit is the baseline/original behavior, not a toggle-on
+            feature. See CameraRig.tsx for the actual drag handler,
+            and App.tsx where activeTool gates OrbitControls'
+            enableRotate. */}
+        <button
+          onClick={() => setActiveTool(activeTool === "pan" ? "orbit" : "pan")}
+          className={iconButtonClass(activeTool === "pan")}
+          title={
+            activeTool === "pan"
+              ? "Switch to orbit (rotate)"
+              : "Switch to pan (drag to move view)"
+          }
+        >
+          {activeTool === "pan" ? (
+            <Hand size={16} />
+          ) : (
+            <MousePointer2 size={16} />
+          )}
         </button>
 
         <div className="w-full h-[1px] bg-white/10 my-1" />
@@ -572,15 +604,30 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                 </div>
               </>
             )}
-            {/* Grid page: alternate grid layouts (issue #28) and
-                multiple axis-scaling modes (issue #25) — both are
-                separate, already-tracked issues; this page is just
-                their future UI home, not new scope for #16 itself. */}
             {activePage === "grid" && (
               <>
                 <p className="text-[10px] font-bold text-blue-400 uppercase">
                   Grid
                 </p>
+                <div>
+                  <p className="text-[10px] font-bold text-white/70 mb-1">
+                    Tick labels
+                  </p>
+                  {(["x", "y", "z"] as const).map((axis) => (
+                    <label
+                      key={axis}
+                      className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!hiddenTickAxes.includes(axis)}
+                        onChange={() => toggleTickAxis(axis)}
+                        className="accent-blue-500"
+                      />
+                      {axisLabels[axis]}
+                    </label>
+                  ))}
+                </div>
                 <div>
                   <p className="text-[10px] font-bold text-white/70 mb-0.5">
                     Grid modes
