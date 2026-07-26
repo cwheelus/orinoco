@@ -98,9 +98,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const toggleTickAxis = useStore((state) => state.toggleTickAxis);
 
-  // Whether the experimental center Y-axis line is shown, and the
-  // setter to flip it — drives the Grid page's "Center Y-axis line"
-  // checkbox under Grid modes.
+  // Whether the experimental center Y axis (line + its ticks/title)
+  // is shown, and the setter to flip it — drives the Grid page's
+  // "Center Y axis" checkbox under Grid modes.
   const centerYAxisVisible = useStore((state) => state.centerYAxisVisible);
   const toggleCenterYAxis = useStore((state) => state.toggleCenterYAxis);
   // The active grid layout mode and its setter — drives the Grid
@@ -642,12 +642,11 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   <p className="text-[10px] font-bold text-white/70 mb-0.5">
                     Grid modes
                   </p>
-                  {/* Center Y-axis line toggle — the first real Grid mode
-                      control, replacing the old "coming soon" placeholder
-                      (this checkbox IS the axis-through-center experiment
-                      that placeholder referred to). Mirrors the Tick labels
-                      checkbox pattern above; state lives in useStore as
-                      centerYAxisVisible, read by Axes.tsx. */}
+                  {/* Center Y axis toggle — hides/shows the whole
+                      center-axis construct: the vertical line, its
+                      ticks/numbers, and its title (see Axes.tsx).
+                      Mirrors the Tick labels checkbox pattern; state
+                      lives in useStore as centerYAxisVisible. */}
                   <label className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1">
                     <input
                       type="checkbox"
@@ -655,7 +654,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                       onChange={toggleCenterYAxis}
                       className="accent-blue-500"
                     />
-                    Center Y-axis line
+                    Center Y axis
                   </label>
                   {/* Grid layout mode — radio pair rather than a
                       checkbox because the modes are mutually exclusive
