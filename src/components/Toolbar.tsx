@@ -97,6 +97,16 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // checkboxes.
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const toggleTickAxis = useStore((state) => state.toggleTickAxis);
+
+  // Whether the experimental center Y axis (line + its ticks/title)
+  // is shown, and the setter to flip it — drives the Grid page's
+  // "Center Y axis" checkbox under Grid modes.
+  const centerYAxisVisible = useStore((state) => state.centerYAxisVisible);
+  const toggleCenterYAxis = useStore((state) => state.toggleCenterYAxis);
+  // The active grid layout mode and its setter — drives the Grid
+  // page's "Grid modes" radio selector (Standard vs. Zero plane).
+  const gridMode = useStore((state) => state.gridMode);
+  const setGridMode = useStore((state) => state.setGridMode);
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
   const [activePage, setActivePage] = useState<PageKey | null>(null);
@@ -632,10 +642,48 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   <p className="text-[10px] font-bold text-white/70 mb-0.5">
                     Grid modes
                   </p>
-                  <p className="text-[10px] text-white/40">
-                    Alternate grid layouts (e.g. axis-through-center) — coming
-                    soon.
-                  </p>
+                  {/* Center Y axis toggle — hides/shows the whole
+                      center-axis construct: the vertical line, its
+                      ticks/numbers, and its title (see Axes.tsx).
+                      Mirrors the Tick labels checkbox pattern; state
+                      lives in useStore as centerYAxisVisible. */}
+                  <label className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1">
+                    <input
+                      type="checkbox"
+                      checked={centerYAxisVisible}
+                      onChange={toggleCenterYAxis}
+                      className="accent-blue-500"
+                    />
+                    Center Y axis
+                  </label>
+                  {/* Grid layout mode — radio pair rather than a
+                      checkbox because the modes are mutually exclusive
+                      (and a third mode can slot in later without
+                      changing the control type). "Standard" = floor at
+                      the data minimum (existing behavior); "Zero plane"
+                      = an added horizontal plane at data-value 0, so
+                      mixed-sign data straddles it (Desmos-style). See
+                      CartesianGrid.tsx for the rendering. */}
+                  {(
+                    [
+                      ["standard", "Standard"],
+                      ["zero-plane", "Zero plane"],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <label
+                      key={mode}
+                      className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
+                    >
+                      <input
+                        type="radio"
+                        name="grid-mode"
+                        checked={gridMode === mode}
+                        onChange={() => setGridMode(mode)}
+                        className="accent-blue-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-white/70 mb-0.5">

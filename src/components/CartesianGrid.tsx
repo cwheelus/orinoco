@@ -1,12 +1,22 @@
 import { Line } from "@react-three/drei";
-import { GRID_MIN as MIN, GRID_MAX as MAX, TICK_STEP as STEP } from "../lib/gridSpace";
-
+import {
+  GRID_MIN as MIN,
+  GRID_MAX as MAX,
+  TICK_STEP as STEP,
+} from "../lib/gridSpace";
+import { useStore } from "../store/useStore";
 // Cartesian grid bounds come from lib/gridSpace.ts, the single source of
 // truth shared with Axes.tsx (ticks/labels) and PointCloud.tsx (data
 // normalization) — all three axes run -2 to 2, with a gridline every 0.5
 // units (matching the tick spacing in Axes.tsx).
 const GRID_COLOR = "#3a4a6b";
 const GRID_OPACITY = 0.35;
+// The zero-anchored plane gets its own color (a muted green, distinct
+// from the blue-gray box) and slightly higher opacity — it's a semantic
+// reference ("this is where data-value 0 lives"), not part of the
+// structural box, and needs to read as such at a glance.
+const ZERO_PLANE_COLOR = "#2d6b4a";
+const ZERO_PLANE_OPACITY = 0.5;
 
 // Builds an evenly spaced array from min to max, inclusive, at the given
 // step (e.g. -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2). This gives us every
@@ -34,6 +44,13 @@ const COORDS = range(MIN, MAX, STEP);
 // them all in one pass at the bottom — this keeps the coordinate math
 // separate from the actual JSX output.
 export function CartesianGrid() {
+  // Which grid layout mode is active — "zero-plane" adds a horizontal
+  // reference plane at data-value 0's render height (see below).
+  const gridMode = useStore((state) => state.gridMode);
+  // ZERO_RENDER.y: where data-value 0 sits in render space on the
+  // vertical axis, clamped to [MIN, MAX] — computed per-dataset in
+  // lib/gridSpace.ts alongside the rest of the grid geometry.
+  const { ZERO_RENDER } = useStore((state) => state.gridSpace);
   const lines: [number, number, number][][] = [];
 
   // Floor: Y = MIN (the bottom of the box). One set of lines runs along
@@ -81,7 +98,32 @@ export function CartesianGrid() {
       [MAX, y, MIN],
     ]);
   });
-
+  // Zero plane (zero-plane mode only): a horizontal grid of lines at
+  // data-value 0's render height, same checkerboard pattern as the
+  // floor. Collected into its OWN array (not `lines`) because it
+  // renders with its own color/opacity. Skipped when zero coincides
+  // with the floor (ZERO_RENDER.y === MIN, i.e. all-positive data —
+  // axisRange anchors those at 0, so the floor already IS the zero
+  // plane) to avoid drawing identical lines twice in the same spot.
+  // The all-negative case (zero clamped to MAX, the ceiling) DOES
+  // draw — the open box has no ceiling, so there's nothing to
+  // double-draw against, and the plane is genuinely informative there.
+  const zeroPlaneLines: [number, number, number][][] = [];
+  if (gridMode === "zero-plane" && ZERO_RENDER.y > MIN) {
+    const zy = ZERO_RENDER.y;
+    COORDS.forEach((x) => {
+      zeroPlaneLines.push([
+        [x, zy, MIN],
+        [x, zy, MAX],
+      ]);
+    });
+    COORDS.forEach((z) => {
+      zeroPlaneLines.push([
+        [MIN, zy, z],
+        [MAX, zy, z],
+      ]);
+    });
+  }
   return (
     <group>
       {/* Render every line collected above. `key={i}` is required by
@@ -97,6 +139,19 @@ export function CartesianGrid() {
           lineWidth={1}
           transparent
           opacity={GRID_OPACITY}
+        />
+      ))}
+      {/* Zero-plane lines (empty array unless zero-plane mode is
+          active — see the geometry block above). Keyed with a "zero-"
+          prefix so they can't collide with the box lines' index keys. */}
+      {zeroPlaneLines.map((points, i) => (
+        <Line
+          key={`zero-${i}`}
+          points={points}
+          color={ZERO_PLANE_COLOR}
+          lineWidth={1}
+          transparent
+          opacity={ZERO_PLANE_OPACITY}
         />
       ))}
     </group>

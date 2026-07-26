@@ -42,6 +42,15 @@ export interface GridSpace {
   SCALE: { x: number; y: number; z: number };
   MIN_SCALE: number;
   toRenderSpace: (point: DataPoint) => [number, number, number];
+  // Render-space coordinate of data-value 0 on each axis, clamped into
+  // [GRID_MIN, GRID_MAX]. The y component positions the zero-anchored
+  // horizontal plane (Desmos-style grid mode); all three components fix
+  // pivot-reset (data-zero, not the display range's midpoint, is the
+  // meaningful origin). Clamping covers datasets where 0 falls outside
+  // the display range: all-positive axes get GRID_MIN (and axisRange
+  // already anchors those at 0, so the floor IS the zero plane);
+  // all-negative axes get GRID_MAX (zero pinned to the ceiling).
+  ZERO_RENDER: { x: number; y: number; z: number };
 }
 
 function boundingBox(points: DataPoint[]) {
@@ -122,6 +131,17 @@ export function computeGridSpace(points: DataPoint[]): GridSpace {
       (point.z - CENTER.z) * SCALE.z,
     ];
   }
-
-  return { DISPLAY_RANGE, SCALE, MIN_SCALE, toRenderSpace };
+  // Where data-value 0 lands in render space, per axis — the same
+  // (value - CENTER) * SCALE transform toRenderSpace applies to points,
+  // evaluated at value = 0, then clamped to the box. Computed here
+  // (rather than in components) so the zero-plane and pivot logic share
+  // one source of truth and recompute atomically with the rest of the
+  // grid when a new dataset loads.
+  const clampToGrid = (v: number) => Math.min(GRID_MAX, Math.max(GRID_MIN, v));
+  const ZERO_RENDER = {
+    x: clampToGrid((0 - CENTER.x) * SCALE.x),
+    y: clampToGrid((0 - CENTER.y) * SCALE.y),
+    z: clampToGrid((0 - CENTER.z) * SCALE.z),
+  };
+  return { DISPLAY_RANGE, SCALE, MIN_SCALE, toRenderSpace, ZERO_RENDER };
 }

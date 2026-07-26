@@ -46,7 +46,12 @@ export interface NumericFilters {
 }
 export type AxisKey = "x" | "y" | "z";
 export type ActiveTool = "orbit" | "pan";
-
+// Which grid layout mode is active. "standard" is the existing
+// behavior: the floor plane sits at the bottom of the display range.
+// "zero-plane" is the Desmos-style experiment: an additional horizontal
+// plane is drawn at data-value 0's render height (gridSpace.ZERO_RENDER.y),
+// so mixed-sign data visibly straddles it.
+export type GridMode = "standard" | "zero-plane";
 const OFF_FILTER: NumericFilter = { op: "off", value: "", value2: "" };
 const NO_NUMERIC_FILTERS: NumericFilters = {
   x: { ...OFF_FILTER },
@@ -97,6 +102,12 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // Whether the center Y-axis reference line is currently rendered.
+  // Toggled from the Toolbar — mirrors gridVisible's pattern.
+  centerYAxisVisible: boolean;
+  // The active grid layout mode — see GridMode above. Selected from
+  // the Toolbar's Grid page "Grid modes" section.
+  gridMode: GridMode;
   // Which navigation mode mouse-drag currently performs: "orbit" rotates
   // around the pivot (default, via OrbitControls); "pan" translates the
   // camera/pivot together instead (via CameraRig's drag handler). Toggled
@@ -123,9 +134,10 @@ interface VisualizerState {
   numericFilters: NumericFilters;
   // Which axes' tick marks/numbers are currently hidden — independent
   // per axis (e.g. hide Y's ticks while keeping X and Z visible).
-  // Modeled on hiddenClasses' array-of-hidden-keys pattern. Does not
-  // affect the axis TITLE (the column name label) — only the small
-  // perpendicular tick marks and their numeric values along that axis.
+  // Modeled on hiddenClasses' array-of-hidden-keys pattern. X's and
+  // Z's axis TITLES hide together with their ticks; Y's titles follow
+  // their own rules (center title tracks centerYAxisVisible, wall
+  // titles track this toggle) — see Axes.tsx.
   hiddenTickAxes: AxisKey[];
   // Toggles whether an axis's tick marks/numbers are shown. Called
   // from the Toolbar's Grid page tick-visibility checkboxes.
@@ -144,6 +156,12 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Flips centerYAxisVisible. Called from the Toolbar's center-line
+  // toggle button.
+  toggleCenterYAxis: () => void;
+  // Sets the grid layout mode. Called from the Toolbar's Grid page
+  // mode selector.
+  setGridMode: (mode: GridMode) => void;
   // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
   // toggle button.
   setActiveTool: (tool: ActiveTool) => void;
@@ -172,6 +190,10 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Center Y-axis line starts visible by default.
+  centerYAxisVisible: true,
+  // Standard mode by default — zero-plane is the opt-in experiment.
+  gridMode: "standard",
   // Orbit is the default drag behavior — matches prior versions where
   // drag-to-rotate was the only option.
   activeTool: "orbit",
@@ -201,6 +223,9 @@ export const useStore = create<VisualizerState>((set) => ({
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  toggleCenterYAxis: () =>
+    set((state) => ({ centerYAxisVisible: !state.centerYAxisVisible })),
+  setGridMode: (gridMode) => set({ gridMode }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>
