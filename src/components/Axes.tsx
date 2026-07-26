@@ -63,9 +63,9 @@ export function Axes() {
   const { DISPLAY_RANGE } = useStore((state) => state.gridSpace);
   const axisLabels = useStore((state) => state.axisLabels);
   // Which axes' tick marks/numbers are currently hidden — toggled
-  // from the Toolbar's Grid page. The axis TITLE (column name) stays
-  // visible regardless; only the small perpendicular ticks and their
-  // numeric values are affected.
+  // from the Toolbar's Grid page. X's and Z's TITLES hide along with
+  // their ticks; Y's titles follow their own rules (center title tracks
+  // centerYAxisVisible, wall titles track this toggle — see below).
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   // Whether the center Y-axis line (below) is currently shown —
   // toggled from the Toolbar's Grid page, separate from tick visibility.
@@ -148,8 +148,8 @@ export function Axes() {
             </Billboard>
           </group>
         ))}
-      {/* Unlike the Y title above (always visible), X's title respects
-          its own tick-visibility toggle. */}
+      {/* X's title respects its own tick-visibility toggle (the center
+          Y title above instead tracks centerYAxisVisible). */}
       {!hiddenTickAxes.includes("x") && (
         <Billboard position={[MIN - 1.5, MIN - 0.8, MAX]}>
           <Text {...axisLabelProps}>{axisLabels.x}</Text>
@@ -218,6 +218,13 @@ export function Axes() {
             </Billboard>
           </group>
         ))}
+      {/* KNOWN REDUNDANCY (deliberate, pending team decision): with
+          the center axis on, THREE identical Y titles render — the
+          center title plus these two wall titles. Options discussed:
+          delete one wall title, and/or gate the survivor on
+          !centerYAxisVisible so exactly one Y title shows in every
+          toggle state. Deferred to a design discussion rather than
+          decided unilaterally — see issue #28. */}
       {!hiddenTickAxes.includes("y") && (
         <Billboard position={[MIN - 0.3, MAX + 0.8, MAX]}>
           <Text {...axisLabelProps}>{axisLabels.y}</Text>
