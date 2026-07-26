@@ -133,21 +133,6 @@ interface VisualizerState {
   // Toggles whether an axis's tick marks/numbers are shown. Called
   // from the Toolbar's Grid page tick-visibility checkboxes.
   toggleTickAxis: (axis: AxisKey) => void;
-  // Whether the center Y-axis line (and its ticks/title) is shown.
-  // Separate from hiddenTickAxes' per-axis Y toggle — this lets an
-  // analyst keep the wall-edge Y references visible while hiding just
-  // the center line, which can visually cut through dense point
-  // clusters sitting near the middle of the box.
-  centerYAxisVisible: boolean;
-  // Toggles the center Y-axis line. Called from the Toolbar's Grid
-  // page "Center line" checkbox.
-  toggleCenterYAxis: () => void;
-  // Replaces the active dataset AND its derived grid geometry/labels
-  // together, atomically. Called from App.tsx's CSV load handler once
-  // parseCSV.ts successfully parses a file — labels come from
-  // parseCSV's detected ColumnMapping (mapping.x/y/z). Also resets the
-  // pivot back to the origin and clears any stale hoveredPoint, since
-  // both referenced the OLD dataset's points/positions.
   // Replaces the active dataset AND its derived grid geometry/labels
   // together, atomically. Called from App.tsx's CSV load handler once
   // parseCSV.ts successfully parses a file — labels come from
