@@ -97,6 +97,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // checkboxes.
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const toggleTickAxis = useStore((state) => state.toggleTickAxis);
+
+  // Whether the experimental center Y-axis line is shown, and the
+  // setter to flip it — drives the Grid page's "Center Y-axis line"
+  // checkbox under Grid modes.
+  const centerYAxisVisible = useStore((state) => state.centerYAxisVisible);
+  const toggleCenterYAxis = useStore((state) => state.toggleCenterYAxis);
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
   const [activePage, setActivePage] = useState<PageKey | null>(null);
@@ -632,10 +638,21 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   <p className="text-[10px] font-bold text-white/70 mb-0.5">
                     Grid modes
                   </p>
-                  <p className="text-[10px] text-white/40">
-                    Alternate grid layouts (e.g. axis-through-center) — coming
-                    soon.
-                  </p>
+                  {/* Center Y-axis line toggle — the first real Grid mode
+                      control, replacing the old "coming soon" placeholder
+                      (this checkbox IS the axis-through-center experiment
+                      that placeholder referred to). Mirrors the Tick labels
+                      checkbox pattern above; state lives in useStore as
+                      centerYAxisVisible, read by Axes.tsx. */}
+                  <label className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1">
+                    <input
+                      type="checkbox"
+                      checked={centerYAxisVisible}
+                      onChange={toggleCenterYAxis}
+                      className="accent-blue-500"
+                    />
+                    Center Y-axis line
+                  </label>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-white/70 mb-0.5">

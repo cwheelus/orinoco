@@ -97,6 +97,9 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // Whether the center Y-axis reference line is currently rendered.
+  // Toggled from the Toolbar — mirrors gridVisible's pattern.
+  centerYAxisVisible: boolean;
   // Which navigation mode mouse-drag currently performs: "orbit" rotates
   // around the pivot (default, via OrbitControls); "pan" translates the
   // camera/pivot together instead (via CameraRig's drag handler). Toggled
@@ -130,6 +133,21 @@ interface VisualizerState {
   // Toggles whether an axis's tick marks/numbers are shown. Called
   // from the Toolbar's Grid page tick-visibility checkboxes.
   toggleTickAxis: (axis: AxisKey) => void;
+  // Whether the center Y-axis line (and its ticks/title) is shown.
+  // Separate from hiddenTickAxes' per-axis Y toggle — this lets an
+  // analyst keep the wall-edge Y references visible while hiding just
+  // the center line, which can visually cut through dense point
+  // clusters sitting near the middle of the box.
+  centerYAxisVisible: boolean;
+  // Toggles the center Y-axis line. Called from the Toolbar's Grid
+  // page "Center line" checkbox.
+  toggleCenterYAxis: () => void;
+  // Replaces the active dataset AND its derived grid geometry/labels
+  // together, atomically. Called from App.tsx's CSV load handler once
+  // parseCSV.ts successfully parses a file — labels come from
+  // parseCSV's detected ColumnMapping (mapping.x/y/z). Also resets the
+  // pivot back to the origin and clears any stale hoveredPoint, since
+  // both referenced the OLD dataset's points/positions.
   // Replaces the active dataset AND its derived grid geometry/labels
   // together, atomically. Called from App.tsx's CSV load handler once
   // parseCSV.ts successfully parses a file — labels come from
@@ -144,6 +162,9 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Flips centerYAxisVisible. Called from the Toolbar's center-line
+  // toggle button.
+  toggleCenterYAxis: () => void;
   // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
   // toggle button.
   setActiveTool: (tool: ActiveTool) => void;
@@ -172,6 +193,8 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Center Y-axis line starts visible by default.
+  centerYAxisVisible: true,
   // Orbit is the default drag behavior — matches prior versions where
   // drag-to-rotate was the only option.
   activeTool: "orbit",
@@ -201,6 +224,8 @@ export const useStore = create<VisualizerState>((set) => ({
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  toggleCenterYAxis: () =>
+    set((state) => ({ centerYAxisVisible: !state.centerYAxisVisible })),
   setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>

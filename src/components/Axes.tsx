@@ -67,6 +67,9 @@ export function Axes() {
   // visible regardless; only the small perpendicular ticks and their
   // numeric values are affected.
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
+  // Whether the center Y-axis line (below) is currently shown —
+  // toggled from the Toolbar's Grid page, separate from tick visibility.
+  const centerYAxisVisible = useStore((state) => state.centerYAxisVisible);
   const tickLabelProps = {
     fontSize: 0.1,
     color: "#cccccc",
@@ -85,14 +88,16 @@ export function Axes() {
           line on both sides (alternating left/right by index) so
           numbers don't stack directly on top of each other along a
           single line. */}
-      <Line
-        points={[
-          [0, MIN, 0],
-          [0, MAX, 0],
-        ]}
-        color="#999999"
-        lineWidth={1}
-      />
+      {centerYAxisVisible && (
+        <Line
+          points={[
+            [0, MIN, 0],
+            [0, MAX, 0],
+          ]}
+          color="#999999"
+          lineWidth={1}
+        />
+      )}
       {/* Only render this axis's ticks if it hasn't been hidden via the
           Toolbar's tick-visibility toggle. */}
       {!hiddenTickAxes.includes("y") &&
@@ -134,10 +139,13 @@ export function Axes() {
             </Billboard>
           </group>
         ))}
-      // orig_bytes (line 138)
-      <Billboard position={[MIN - 1.5, MIN - 0.8, MAX]}>
-        <Text {...axisLabelProps}>{axisLabels.x}</Text>
-      </Billboard>
+      {/* Unlike the Y title above (always visible), X's title respects
+          its own tick-visibility toggle. */}
+      {!hiddenTickAxes.includes("x") && (
+        <Billboard position={[MIN - 1.5, MIN - 0.8, MAX]}>
+          <Text {...axisLabelProps}>{axisLabels.x}</Text>
+        </Billboard>
+      )}
       {/* Same tick-visibility check as Y and X, above. */}
       {!hiddenTickAxes.includes("z") &&
         TICKS.map((t) => (
@@ -155,9 +163,12 @@ export function Axes() {
             </Billboard>
           </group>
         ))}
-      <Billboard position={[MAX + 1, MIN - 0.8, MIN - 1.5]}>
-        <Text {...axisLabelProps}>{axisLabels.z}</Text>
-      </Billboard>
+      {/* Same as X's title, above — respects its own tick toggle. */}
+      {!hiddenTickAxes.includes("z") && (
+        <Billboard position={[MAX + 1, MIN - 0.8, MIN - 1.5]}>
+          <Text {...axisLabelProps}>{axisLabels.z}</Text>
+        </Billboard>
+      )}
       {/* Wall-edge Y ticks (in addition to the center-line Y axis
           above, which stays untouched). Each of the two existing
           walls gets its own Y reference on its OUTER vertical edge —
