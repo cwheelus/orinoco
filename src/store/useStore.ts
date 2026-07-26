@@ -46,7 +46,12 @@ export interface NumericFilters {
 }
 export type AxisKey = "x" | "y" | "z";
 export type ActiveTool = "orbit" | "pan";
-
+// Which grid layout mode is active. "standard" is the existing
+// behavior: the floor plane sits at the bottom of the display range.
+// "zero-plane" is the Desmos-style experiment: an additional horizontal
+// plane is drawn at data-value 0's render height (gridSpace.ZERO_RENDER.y),
+// so mixed-sign data visibly straddles it.
+export type GridMode = "standard" | "zero-plane";
 const OFF_FILTER: NumericFilter = { op: "off", value: "", value2: "" };
 const NO_NUMERIC_FILTERS: NumericFilters = {
   x: { ...OFF_FILTER },
@@ -100,6 +105,9 @@ interface VisualizerState {
   // Whether the center Y-axis reference line is currently rendered.
   // Toggled from the Toolbar — mirrors gridVisible's pattern.
   centerYAxisVisible: boolean;
+  // The active grid layout mode — see GridMode above. Selected from
+  // the Toolbar's Grid page "Grid modes" section.
+  gridMode: GridMode;
   // Which navigation mode mouse-drag currently performs: "orbit" rotates
   // around the pivot (default, via OrbitControls); "pan" translates the
   // camera/pivot together instead (via CameraRig's drag handler). Toggled
@@ -150,6 +158,9 @@ interface VisualizerState {
   // Flips centerYAxisVisible. Called from the Toolbar's center-line
   // toggle button.
   toggleCenterYAxis: () => void;
+  // Sets the grid layout mode. Called from the Toolbar's Grid page
+  // mode selector.
+  setGridMode: (mode: GridMode) => void;
   // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
   // toggle button.
   setActiveTool: (tool: ActiveTool) => void;
@@ -180,6 +191,8 @@ export const useStore = create<VisualizerState>((set) => ({
   gridVisible: true,
   // Center Y-axis line starts visible by default.
   centerYAxisVisible: true,
+  // Standard mode by default — zero-plane is the opt-in experiment.
+  gridMode: "standard",
   // Orbit is the default drag behavior — matches prior versions where
   // drag-to-rotate was the only option.
   activeTool: "orbit",
@@ -211,6 +224,7 @@ export const useStore = create<VisualizerState>((set) => ({
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
   toggleCenterYAxis: () =>
     set((state) => ({ centerYAxisVisible: !state.centerYAxisVisible })),
+  setGridMode: (gridMode) => set({ gridMode }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>
