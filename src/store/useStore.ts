@@ -134,9 +134,10 @@ interface VisualizerState {
   numericFilters: NumericFilters;
   // Which axes' tick marks/numbers are currently hidden — independent
   // per axis (e.g. hide Y's ticks while keeping X and Z visible).
-  // Modeled on hiddenClasses' array-of-hidden-keys pattern. Does not
-  // affect the axis TITLE (the column name label) — only the small
-  // perpendicular tick marks and their numeric values along that axis.
+  // Modeled on hiddenClasses' array-of-hidden-keys pattern. X's and
+  // Z's axis TITLES hide together with their ticks; Y's titles follow
+  // their own rules (center title tracks centerYAxisVisible, wall
+  // titles track this toggle) — see Axes.tsx.
   hiddenTickAxes: AxisKey[];
   // Toggles whether an axis's tick marks/numbers are shown. Called
   // from the Toolbar's Grid page tick-visibility checkboxes.
