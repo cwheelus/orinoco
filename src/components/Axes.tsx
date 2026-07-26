@@ -98,9 +98,13 @@ export function Axes() {
           lineWidth={1}
         />
       )}
-      {/* Only render this axis's ticks if it hasn't been hidden via the
-          Toolbar's tick-visibility toggle. */}
-      {!hiddenTickAxes.includes("y") &&
+      {/* Center-line ticks/numbers render only when the center line
+          itself is shown (they belong to it — ticks floating with no
+          line would be meaningless) AND the per-axis Y toggle allows
+          ticks. Wall-edge Y ticks below are unaffected by the center
+          toggle, so hiding the center never loses Y readability. */}
+      {centerYAxisVisible &&
+        !hiddenTickAxes.includes("y") &&
         TICKS.map((t, i) => {
           const side = i % 2 === 0 ? 1 : -1;
           return (
@@ -119,9 +123,14 @@ export function Axes() {
             </group>
           );
         })}
-      <Billboard position={[0, MAX + 0.8, 0]}>
-        <Text {...axisLabelProps}>{axisLabels.y}</Text>
-      </Billboard>
+      {/* The center title belongs to the center-axis construct — it
+          hides with the line. The wall-edge Y titles (bottom of file)
+          remain, so the axis name is never lost entirely. */}
+      {centerYAxisVisible && (
+        <Billboard position={[0, MAX + 0.8, 0]}>
+          <Text {...axisLabelProps}>{axisLabels.y}</Text>
+        </Billboard>
+      )}
       {/* Same tick-visibility check as Y, above. */}
       {!hiddenTickAxes.includes("x") &&
         TICKS.map((t) => (
