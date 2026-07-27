@@ -26,13 +26,17 @@ Example walkthrough:
 
 ## Screenshots
 
+> **Note:** the screenshots below are outdated (pre-dating the pan tool, data filters, and grid modes work) and are pending an update. See the demo videos above for the current UI in the meantime.
+
 ### Main Visualization View
 
 ![Main Visualization](docs/images/main.png)
+_(placeholder — screenshot to be retaken)_
 
 ### Point Inspection HUD
 
 ![Point Inspection HUD](docs/images/data_info.png)
+_(placeholder — screenshot to be retaken)_
 
 ---
 
@@ -92,19 +96,19 @@ flowchart LR
 
 The visualization environment supports analyst-focused navigation.
 
-| Input         | Action                               |
-| ------------- | ------------------------------------ |
-| W             | Move toward current pivot            |
-| S             | Move away from current pivot         |
-| A             | Orbit left around pivot              |
-| D             | Orbit right around pivot             |
-| Left / Right  | Move pivot along the X axis          |
-| Up / Down     | Move pivot along the Z axis          |
-| Space / Shift | Raise / lower pivot along the Y axis |
-| Mouse Drag    | Free camera rotation                 |
-| Mouse Hover   | Inspect point metadata               |
-| Mouse Click   | Set selected node as new pivot       |
-| Toolbar Reset | Return pivot to origin               |
+| Input         | Action                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| W             | Move toward current pivot                                                                      |
+| S             | Move away from current pivot                                                                   |
+| A             | Orbit left around pivot                                                                        |
+| D             | Orbit right around pivot                                                                       |
+| Left / Right  | Move pivot along the X axis                                                                    |
+| Up / Down     | Move pivot along the Z axis                                                                    |
+| Space / Shift | Raise / lower pivot along the Y axis                                                           |
+| Mouse Drag    | Free camera rotation, or pan (translate view), depending on the active tool set in the Toolbar |
+| Mouse Hover   | Inspect point metadata                                                                         |
+| Mouse Click   | Set selected node as new pivot                                                                 |
+| Toolbar Reset | Return pivot to origin                                                                         |
 
 ---
 
@@ -155,6 +159,26 @@ A loaded CSV's own class values inherit these colors where names match, and fall
 
 ---
 
+## Grid Modes & Axis Display
+
+The Grid page in the Toolbar gives analysts control over how the Y axis and grid are presented:
+
+- **Per-axis tick label visibility** — each of the three axes' tick marks and numeric labels can be hidden independently, decluttering the view without removing the axis itself
+- **Center Y axis** — an experimental Desmos-style vertical axis running through the center of the floor plane (rather than the box's corner edge), with its own ticks and title. Toggleable as a single unit — hiding it removes the line, its ticks, and its title together, while independent wall-edge Y references remain
+- **Grid modes** — a Standard mode (existing floor-anchored behavior) and a Zero plane mode, which adds a horizontal reference plane at data-value 0. Mixed-sign datasets visibly straddle this plane; on all-positive datasets the plane is intentionally suppressed, since the floor already sits at zero
+
+## Data Filtering & Point Sizing
+
+The Data page in the Toolbar supports narrowing down the visible point cloud:
+
+- **Class visibility filtering** — individual classification categories can be hidden from the render, each shown with its assigned color swatch
+- **Per-axis numeric filters** — points can be filtered by value range on any of the three axes, using an operator dropdown (>, ≥, <, ≤, =, between) plus one or two value boxes
+- **Point-size scaling** — point size adjusts automatically based on dataset density (denser datasets get smaller points so they don't merge into a blob), with a manual multiplier slider and one-click reset to the automatic size
+
+Rendering is done as a single instanced mesh, so filtering by class or numeric range doesn't remount or reallocate anything — hidden points are simply excluded from the draw call.
+
+---
+
 ## Toolbar
 
 A Blender-style docked side panel provides quick access to data and display controls, without needing to memorize keyboard shortcuts for everything.
@@ -163,13 +187,14 @@ A Blender-style docked side panel provides quick access to data and display cont
 
 **Icon strip contents:**
 
-| Icon          | Action                                                                                                     |
-| ------------- | ---------------------------------------------------------------------------------------------------------- |
-| Paperclip     | Opens the native file picker to load a CSV                                                                 |
-| Reset         | Returns the pivot to the origin                                                                            |
-| Eye / Eye-off | Toggles the Cartesian grid box on or off (axis labels remain visible either way)                           |
-| Data          | Opens a panel reserved for dataset filtering and point-size scaling (in progress, tracked separately)      |
-| Grid          | Opens a panel reserved for alternate grid layouts and axis-scaling modes (in progress, tracked separately) |
+| Icon           | Action                                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Paperclip      | Opens the native file picker to load a CSV                                                                                  |
+| Reset          | Returns the pivot to the origin                                                                                             |
+| Eye / Eye-off  | Toggles the Cartesian grid box on or off (axis labels remain visible either way)                                            |
+| Hand / Pointer | Switches the mouse-drag behavior between orbit (rotate around pivot) and pan (translate view)                               |
+| Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling                              |
+| Grid           | Opens a panel for per-axis tick label visibility, the center Y axis toggle, and grid mode selection (Standard / Zero plane) |
 
 ```mermaid
 stateDiagram-v2
@@ -208,7 +233,7 @@ flowchart TB
         PointCloud
         CameraRig
     end
-    Store[("Zustand Store: pivot, hoveredPoint, dataPoints, gridSpace, axisLabels, gridVisible")]
+    Store[("Zustand Store: pivot, hoveredPoint, dataPoints, gridSpace, axisLabels, gridVisible, activeTool, hiddenClasses, numericFilters, hiddenTickAxes, centerYAxisVisible, gridMode")]
 
     Toolbar -- "setDataPoints / setPivot / toggleGrid" --> Store
     PointCloud -- "setHoveredPoint / setPivot" --> Store
@@ -271,6 +296,11 @@ orinoco/
 │       └── Deliberately invalid CSV (wrong column count) for
 │           exercising parseCSV.ts's error handling
 │
+├── sample-data/
+│   └── mixed-sign-sample.csv
+│       └── 500-row mixed positive/negative sample, for
+│           demonstrating the zero-plane grid mode
+│
 ├── src/
 │   ├── components/
 │   │   ├── Axes.tsx
@@ -305,7 +335,9 @@ orinoco/
 │   ├── store/
 │   │   └── useStore.ts
 │   │       └── Global visualization state: pivot, hoveredPoint,
-│   │           dataPoints, gridSpace, axisLabels, gridVisible
+│   │           dataPoints, gridSpace, axisLabels, gridVisible,
+│   │           activeTool, hiddenClasses, numericFilters,
+│   │           hiddenTickAxes, centerYAxisVisible, gridMode
 │   │
 │   ├── types.ts
 │   │   └── Shared DataPoint interface, used by the store, parser,
@@ -400,6 +432,7 @@ Used features:
 - Pointer interaction events
 - 3D object components
 - Scene and camera integration
+- Instanced rendering (`InstancedMesh`) for the point cloud, scaling to 100k+ points as a single draw call
 - Imperative refs (`pivotMarkerRef`) for per-frame object updates outside the store-driven pattern
 
 ### @react-three/drei
@@ -431,6 +464,12 @@ Managed state:
 - Derived grid geometry for the active dataset (`gridSpace`)
 - Axis labels for the active dataset (`axisLabels`)
 - Grid visibility (`gridVisible`)
+- Active navigation tool — orbit or pan (`activeTool`)
+- Distinct class names present in the active dataset (`availableClasses`)
+- Class visibility and per-axis numeric filters (`hiddenClasses`, `numericFilters`)
+- Per-axis tick label visibility (`hiddenTickAxes`)
+- Center Y axis visibility (`centerYAxisVisible`)
+- Active grid layout mode — standard or zero-plane (`gridMode`)
 
 ---
 
@@ -469,7 +508,7 @@ npm run lint
 
 ### Lucide React
 
-Icon library used for interface elements, including the toolbar's icon strip (paperclip, reset, grid visibility, Data/Grid page icons).
+Icon library used for interface elements, including the toolbar's icon strip (paperclip, reset, grid visibility, pan/orbit toggle, Data/Grid page icons).
 
 ---
 
@@ -580,11 +619,17 @@ npm run lint
 
 Sample CSV files for manually exercising the loader live in `test-data/`:
 
-| File                 | Purpose                                                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `test-1k.csv`        | 1,000-row synthetic dataset, for confirming normal load/render behavior at moderate scale                                                              |
-| `test-10k.csv`       | 10,000-row synthetic dataset, for performance testing — current rendering shows noticeable lag at this scale, tracked as a follow-up optimization item |
-| `test-malformed.csv` | Deliberately invalid (wrong column count), for confirming `parseCSV.ts`'s error handling surfaces correctly instead of failing silently                |
+| File                 | Purpose                                                                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `test-1k.csv`        | 1,000-row synthetic dataset, for confirming normal load/render behavior at moderate scale                                               |
+| `test-10k.csv`       | 10,000-row synthetic dataset, for performance testing                                                                                   |
+| `test-malformed.csv` | Deliberately invalid (wrong column count), for confirming `parseCSV.ts`'s error handling surfaces correctly instead of failing silently |
+
+A curated mixed-sign sample also lives in `sample-data/`:
+
+| File                    | Purpose                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `mixed-sign-sample.csv` | 500-row sample with both positive and negative values, for demonstrating the zero-plane grid mode |
 
 Load any of these through the toolbar's paperclip icon.
 
@@ -611,19 +656,7 @@ Pulled directly from [package.json](package.json)
 
 # Future Enhancements
 
-Potential future improvements:
-
-- Camera guardrails
-- Manual column-mapping override for CSV loading (rather than relying solely on auto-detection)
-- Grid toggle for individual faces/lines beyond the current show/hide-all control
-- Multiple grid layouts (e.g. axis-through-center) and axis-scaling modes
-- Dataset filtering by classification and value range
-- Point-size scaling for dense datasets
-- Backend API integration
-- Additional classification categories
-- Large dataset optimization using InstancedMesh (addresses current lag at 10k+ points)
-- Analyst investigation bookmarks
-- Dataset comparison workflows (multiple datasets loaded and viewed together)
+See the [Issues tab](https://github.com/cwheelus/orinoco/issues) for planned work and open feature requests.
 
 ---
 
@@ -633,10 +666,12 @@ Project Orinoco is a functional MVP demonstrating:
 
 - Interactive 3D threat visualization
 - Cartesian spatial rendering with dynamic per-axis scaling, recomputed per active dataset
-- WASD camera navigation with dedicated arrow/space/shift pivot traversal
+- WASD camera navigation with dedicated arrow/space/shift pivot traversal, plus orbit and pan drag modes
 - Dynamic pivot exploration with origin reset and lockstep marker tracking
 - Dynamic CSV dataset loading, with an auto-detecting parser and clear error handling for malformed files
-- A docked, resizable toolbar for data loading, pivot reset, and grid visibility
+- A docked, resizable toolbar for data loading, pivot reset, grid visibility, dataset filtering, and grid/axis display modes
+- Instanced point rendering with count-adaptive sizing for large datasets
+- Per-axis tick label visibility, an experimental center-axis grid layout, and a zero-anchored reference plane mode
 - Real-time metadata inspection, labeled with the active dataset's real column names
 - SOC-style analyst interface
 
