@@ -42,10 +42,13 @@ const FILTER_OPS: { value: FilterOp; label: string }[] = [
  *  - Reset pivot to origin (action)
  *  - Grid on/off (action, toggles gridVisible in the store — fully
  *    functional now, wired to CartesianGrid's render in App.tsx)
- *  - Data (page — houses filtering and data-size scaling once built;
- *    currently a placeholder, see issues #27 and future work)
- *  - Grid (page — houses multiple grid/scaling modes once built;
- *    currently a placeholder, see issues #25/#28)
+ *  - Orbit/Pan toggle (action, switches mouse-drag behavior between
+ *    orbit and pan via activeTool in the store — see CameraRig.tsx)
+ *  - Data (page — class-visibility filtering, per-axis numeric
+ *    filters, and point-size scaling. Fully functional; see #32)
+ *  - Grid (page — per-axis tick label visibility, the experimental
+ *    center Y axis toggle, and grid mode selection (Standard / Zero
+ *    plane). Scaling modes remain a placeholder — see #25)
  */
 interface ToolbarProps {
   onFileSelected: (file: File) => void;
