@@ -750,7 +750,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                           <input
                             type="number"
                             value={customBounds[axis]}
-                            placeholder={String(displayRange[axis].max)}
+                            placeholder={String(
+                              Math.max(
+                                Math.abs(displayRange[axis].min),
+                                Math.abs(displayRange[axis].max),
+                              ),
+                            )}
                             onChange={(e) =>
                               setCustomBound(axis, e.target.value)
                             }
