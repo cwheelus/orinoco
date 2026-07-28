@@ -311,9 +311,6 @@ orinoco/
 │   │   └── Shared DataPoint interface, used by the store, parser,
 │   │       and grid math so the shape is defined exactly once
 │   │
-│   ├── data.json
-│   │   └── Bundled default threat dataset
-│   │
 │   ├── App.tsx
 │   │   └── Application shell, Canvas, HUD, and CSV-load orchestration
 │   │

@@ -1,13 +1,60 @@
 import { create } from "zustand";
-import defaultData from "../data.json";
-import { computeGridSpace, type GridSpace } from "../lib/gridSpace";
+import {
+  computeGridSpace,
+  type GridSpace,
+  type ScalingMode,
+  type OctantSign,
+} from "../lib/gridSpace";
 import type { DataPoint } from "../types";
+
+export type { ScalingMode, OctantSign };
+
+// The analyst's typed ± bound per axis for "custom" scaling, kept as raw
+// text-box strings (so an in-progress "-" or "" doesn't coerce to 0) —
+// computeGridSpace parses them and falls back to the auto value for any
+// axis left blank/invalid.
+export interface CustomBounds {
+  x: string;
+  y: string;
+  z: string;
+}
+const EMPTY_CUSTOM_BOUNDS: CustomBounds = { x: "", y: "", z: "" };
+
+// Builds the ScalingConfig computeGridSpace expects from the store's mode
+// + raw text bounds — parsing the strings to numbers (NaN if invalid).
+function scalingConfig(mode: ScalingMode, bounds: CustomBounds) {
+  return {
+    mode,
+    custom: {
+      x: parseFloat(bounds.x),
+      y: parseFloat(bounds.y),
+      z: parseFloat(bounds.z),
+    },
+  };
+}
+
+// Every input computeGridSpace depends on, in one place. Each setter that
+// changes any of them (dataset, scaling mode, custom bounds, isolated
+// octant) recomputes through this rather than repeating the wiring — so a
+// new dependency can't be silently missed by one call site.
+function gridSpaceFor(s: {
+  dataPoints: DataPoint[];
+  scalingMode: ScalingMode;
+  customBounds: CustomBounds;
+  isolatedOctant: OctantSign | null;
+}): GridSpace {
+  return computeGridSpace(
+    s.dataPoints,
+    scalingConfig(s.scalingMode, s.customBounds),
+    s.isolatedOctant,
+  );
+}
 
 export type { DataPoint };
 
 // Human-facing names for each axis, e.g. "orig_bytes" — comes from
 // parseCSV.ts's detected column mapping when a CSV is loaded, or the
-// hardcoded defaults below for the bundled data.json. Axes.tsx and
+// placeholder defaults below until the first CSV loads. Axes.tsx and
 // App.tsx's Point Analysis panel both read these instead of
 // hardcoding label strings, so a newly loaded CSV's own column names
 // appear everywhere automatically.
@@ -17,8 +64,8 @@ export interface AxisLabels {
   z: string;
 }
 
-// Default labels matching data.json's known source columns
-// (flow-viz-sample1.csv) — used until a CSV is loaded and replaces
+// Placeholder labels matching the bundled sample CSV's columns — shown
+// for the brief moment before App.tsx's mount-time load replaces
 // them with that file's own detected column names.
 const DEFAULT_AXIS_LABELS: AxisLabels = {
   x: "orig_bytes",
@@ -46,12 +93,6 @@ export interface NumericFilters {
 }
 export type AxisKey = "x" | "y" | "z";
 export type ActiveTool = "orbit" | "pan";
-// Which grid layout mode is active. "standard" is the existing
-// behavior: the floor plane sits at the bottom of the display range.
-// "zero-plane" is the Desmos-style experiment: an additional horizontal
-// plane is drawn at data-value 0's render height (gridSpace.ZERO_RENDER.y),
-// so mixed-sign data visibly straddles it.
-export type GridMode = "standard" | "zero-plane";
 const OFF_FILTER: NumericFilter = { op: "off", value: "", value2: "" };
 const NO_NUMERIC_FILTERS: NumericFilters = {
   x: { ...OFF_FILTER },
@@ -70,10 +111,10 @@ function uniqueClasses(points: DataPoint[]): string[] {
 }
 
 interface VisualizerState {
-  // The active dataset being rendered. Defaults to the bundled
-  // data.json so the app still shows something on first load —
-  // loading a CSV via the Toolbar replaces this entirely via
-  // setDataPoints, rather than merging or appending.
+  // The active dataset being rendered. Starts empty; App.tsx loads the
+  // bundled sample CSV on mount (and the Toolbar loads user CSVs), both
+  // via setDataPoints, which replaces this entirely rather than merging
+  // or appending.
   dataPoints: DataPoint[];
   // Derived grid geometry (display ranges, per-axis scale, MIN_SCALE,
   // and a ready-to-use toRenderSpace function) for the CURRENT
@@ -102,12 +143,6 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
-  // Whether the center Y-axis reference line is currently rendered.
-  // Toggled from the Toolbar — mirrors gridVisible's pattern.
-  centerYAxisVisible: boolean;
-  // The active grid layout mode — see GridMode above. Selected from
-  // the Toolbar's Grid page "Grid modes" section.
-  gridMode: GridMode;
   // Which navigation mode mouse-drag currently performs: "orbit" rotates
   // around the pivot (default, via OrbitControls); "pan" translates the
   // camera/pivot together instead (via CameraRig's drag handler). Toggled
@@ -126,7 +161,7 @@ interface VisualizerState {
   // Class names the analyst has hidden via the Data page. Points whose
   // className is in here are filtered out of the render (see
   // PointCloud.tsx). Stored as the HIDDEN set (rather than visible) so
-  // the default — nothing hidden — is just an empty array.
+  // the default is just an empty array.
   hiddenClasses: string[];
   // Per-axis numeric filters (on the RAW data values, matching the axis
   // tick labels). A point must satisfy every active axis filter to be
@@ -134,14 +169,40 @@ interface VisualizerState {
   numericFilters: NumericFilters;
   // Which axes' tick marks/numbers are currently hidden — independent
   // per axis (e.g. hide Y's ticks while keeping X and Z visible).
-  // Modeled on hiddenClasses' array-of-hidden-keys pattern. X's and
-  // Z's axis TITLES hide together with their ticks; Y's titles follow
-  // their own rules (center title tracks centerYAxisVisible, wall
-  // titles track this toggle) — see Axes.tsx.
+  // Modeled on hiddenClasses' array-of-hidden-keys pattern. Each axis's
+  // numeric tick labels hide independently; the axis line and its name
+  // label always stay — see Axes.tsx.
   hiddenTickAxes: AxisKey[];
+  // Active axis-scaling mode — see gridSpace.ts's ScalingMode. Selected
+  // from the Grid page. Changing it recomputes gridSpace (below).
+  scalingMode: ScalingMode;
+  // The analyst's typed ± bounds per axis, used only in "custom" mode.
+  customBounds: CustomBounds;
+  // Which octant ("quadrant") is currently isolated, or null for the full
+  // grid. When set, the grid rescales so that octant fills the whole box
+  // and PointCloud hides every point outside it. Chosen from the Isolate
+  // page's cube gizmo.
+  isolatedOctant: OctantSign | null;
+  // Target number of tick marks per side on each axis — the "granularity"
+  // slider in the Grid page. Axes.tsx picks the nearest nice-number step
+  // to roughly hit this count, so a higher value = finer ticks. Purely a
+  // display preference; doesn't affect gridSpace or the data.
+  tickDensity: number;
   // Toggles whether an axis's tick marks/numbers are shown. Called
   // from the Toolbar's Grid page tick-visibility checkboxes.
   toggleTickAxis: (axis: AxisKey) => void;
+  // Sets the tick-granularity target. Called from the Grid page's tick
+  // density slider.
+  setTickDensity: (n: number) => void;
+  // Isolates an octant (or clears back to the full grid with null) and
+  // recomputes the grid geometry. Called from the Isolate page's gizmo.
+  setIsolatedOctant: (octant: OctantSign | null) => void;
+  // Sets the scaling mode and recomputes gridSpace. Called from the Grid
+  // page's scaling-mode selector.
+  setScalingMode: (mode: ScalingMode) => void;
+  // Updates one axis's custom ± bound and recomputes gridSpace. Called
+  // from the Grid page's custom-bound inputs.
+  setCustomBound: (axis: AxisKey, value: string) => void;
   // Replaces the active dataset AND its derived grid geometry/labels
   // together, atomically. Called from App.tsx's CSV load handler once
   // parseCSV.ts successfully parses a file — labels come from
@@ -156,12 +217,6 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
-  // Flips centerYAxisVisible. Called from the Toolbar's center-line
-  // toggle button.
-  toggleCenterYAxis: () => void;
-  // Sets the grid layout mode. Called from the Toolbar's Grid page
-  // mode selector.
-  setGridMode: (mode: GridMode) => void;
   // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
   // toggle button.
   setActiveTool: (tool: ActiveTool) => void;
@@ -179,9 +234,15 @@ interface VisualizerState {
 }
 
 export const useStore = create<VisualizerState>((set) => ({
-  // Cast is safe: data.json is authored to match this exact shape.
-  dataPoints: defaultData as DataPoint[],
-  gridSpace: computeGridSpace(defaultData as DataPoint[]),
+  // The app starts with NO data — App.tsx loads the bundled sample CSV
+  // through the normal parseCSV → setDataPoints pipeline on mount, so
+  // there is no separate hardcoded-JSON code path. Until that resolves
+  // (a tick after mount) the scene shows an empty grid.
+  dataPoints: [],
+  gridSpace: computeGridSpace(
+    [],
+    scalingConfig("normalized", EMPTY_CUSTOM_BOUNDS),
+  ),
   axisLabels: DEFAULT_AXIS_LABELS,
   // Starting pivot: the world origin, per the project spec — the
   // camera should default to orbiting (0,0,0) until a point is clicked.
@@ -190,17 +251,14 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
-  // Center Y-axis line starts visible by default.
-  centerYAxisVisible: true,
-  // Standard mode by default — zero-plane is the opt-in experiment.
-  gridMode: "standard",
   // Orbit is the default drag behavior — matches prior versions where
   // drag-to-rotate was the only option.
   activeTool: "orbit",
   // Point size starts at the automatic size (no manual scaling).
   pointSizeScale: 1,
   // Filters start fully open — every class shown, no numeric filtering.
-  availableClasses: uniqueClasses(defaultData as DataPoint[]),
+  // Empty until the sample CSV loads on mount (setDataPoints fills it).
+  availableClasses: [],
   hiddenClasses: [],
   numericFilters: NO_NUMERIC_FILTERS,
   // All axes' tick marks/numbers visible by default. Unlike
@@ -209,23 +267,35 @@ export const useStore = create<VisualizerState>((set) => ({
   // themselves (which always exist), not to a specific dataset's
   // content, so there's no reason to clear it when a new CSV loads.
   hiddenTickAxes: [],
+  // Full grid by default — no octant isolated.
+  isolatedOctant: null,
+  // Scaling starts in per-axis auto-normalized mode, no custom bounds.
+  scalingMode: "normalized",
+  customBounds: EMPTY_CUSTOM_BOUNDS,
+  // Default tick granularity — ~10 per side (Axes.tsx nice-rounds it).
+  tickDensity: 10,
   setDataPoints: (dataPoints, axisLabels) =>
-    set({
+    set((state) => ({
       dataPoints,
       axisLabels,
-      gridSpace: computeGridSpace(dataPoints),
+      // Recompute against the CURRENT scaling mode/bounds so a loaded CSV
+      // respects whatever scaling the analyst has selected. Custom bounds
+      // are kept (not reset) — they're a display preference, and any that
+      // don't fit the new data just fall back to auto per axis. Isolation
+      // IS cleared: an octant selected against the old dataset says
+      // nothing about the new one, and silently hiding 7/8 of a
+      // freshly-loaded file would look like a broken load.
+      gridSpace: gridSpaceFor({ ...state, dataPoints, isolatedOctant: null }),
+      isolatedOctant: null,
       pivot: [0, 0, 0],
       hoveredPoint: null,
       availableClasses: uniqueClasses(dataPoints),
       hiddenClasses: [],
       numericFilters: NO_NUMERIC_FILTERS,
-    }),
+    })),
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
-  toggleCenterYAxis: () =>
-    set((state) => ({ centerYAxisVisible: !state.centerYAxisVisible })),
-  setGridMode: (gridMode) => set({ gridMode }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>
@@ -246,4 +316,30 @@ export const useStore = create<VisualizerState>((set) => ({
         ? state.hiddenTickAxes.filter((a) => a !== axis)
         : [...state.hiddenTickAxes, axis],
     })),
+  setTickDensity: (tickDensity) => set({ tickDensity }),
+  setIsolatedOctant: (isolatedOctant) =>
+    set((state) => ({
+      isolatedOctant,
+      gridSpace: gridSpaceFor({ ...state, isolatedOctant }),
+      // Re-center on the new view: the old pivot was a coordinate in the
+      // pre-isolation mapping, so keeping it would leave the camera
+      // orbiting a point that no longer corresponds to the same data.
+      pivot: [0, 0, 0],
+    })),
+  setScalingMode: (scalingMode) =>
+    set((state) => ({
+      scalingMode,
+      gridSpace: gridSpaceFor({ ...state, scalingMode }),
+    })),
+  setCustomBound: (axis, value) =>
+    set((state) => {
+      const customBounds = { ...state.customBounds, [axis]: value };
+      return {
+        customBounds,
+        // Recompute live so typing a bound reflects immediately. Only
+        // actually changes the render in "custom" mode; harmless in the
+        // auto modes (custom bounds are ignored there).
+        gridSpace: gridSpaceFor({ ...state, customBounds }),
+      };
+    }),
 }));

@@ -1,7 +1,25 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
+import { GRID_MAX } from "../lib/gridSpace";
+import { cameraOrientation } from "../lib/cameraSync";
 import * as THREE from "three";
+
+// Zoom guard rails — the camera-to-pivot distance is clamped to this
+// range, both by OrbitControls' scroll dolly (App.tsx imports these) and
+// by the W/S keys below. Zoom-in is intentionally generous (a small
+// floor, so you can get right up to a point without passing through it);
+// zoom-out is capped so the grid can't shrink to an unusable speck.
+export const MIN_ZOOM_DIST = 0.15;
+export const MAX_ZOOM_DIST = 18;
+
+// How far the pivot may be pushed past the grid walls via arrow/pan
+// traversal: 50% of the box's half-extent beyond each side (so ±3 for the
+// ±2 box). Keeps the pivot from wandering off into empty space.
+const PIVOT_LIMIT = GRID_MAX * 1.5;
+
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.min(hi, Math.max(lo, v));
 
 // How fast the camera moves toward/away from the pivot when zooming (W/S)
 const MOVE_SPEED = 15;
@@ -110,12 +128,54 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     lastStorePivot.current.copy(livePivot.current);
   }, [setPivot]);
 
+  // Shifts the pivot by `delta`, clamping it to PIVOT_LIMIT, and moves the
+  // camera by the SAME (post-clamp) amount so rotation is preserved and
+  // the marker/camera stay in lockstep. Used by both arrow-key traversal
+  // and mouse-drag panning — the two ways the user shifts the pivot. When
+  // the clamp bites, the actual applied delta shrinks, so the camera never
+  // drifts past where the pivot was allowed to go.
+  const applyPivotDelta = useCallback(
+    (delta: THREE.Vector3) => {
+      const px = livePivot.current.x;
+      const py = livePivot.current.y;
+      const pz = livePivot.current.z;
+      livePivot.current.set(
+        clamp(px + delta.x, -PIVOT_LIMIT, PIVOT_LIMIT),
+        clamp(py + delta.y, -PIVOT_LIMIT, PIVOT_LIMIT),
+        clamp(pz + delta.z, -PIVOT_LIMIT, PIVOT_LIMIT),
+      );
+      camera.position.x += livePivot.current.x - px;
+      camera.position.y += livePivot.current.y - py;
+      camera.position.z += livePivot.current.z - pz;
+      syncPivot();
+    },
+    [camera, syncPivot],
+  );
+
   // Registers raw browser keyboard listeners once, when this component
   // first mounts. We use native addEventListener here instead of React
   // event props because keyboard input needs to work globally (anywhere
   // on the page), not just when a specific element is focused.
   useEffect(() => {
+    // Clears every held key at once. Used both when a modifier shortcut
+    // starts and when the window loses focus — see below.
+    const resetHeldKeys = () => {
+      for (const k in heldKeys) heldKeys[k] = false;
+    };
     const handleDown = (e: KeyboardEvent) => {
+      // A Cmd/Ctrl shortcut is in progress (e.g. Cmd+Shift+4 to take a
+      // macOS screenshot). Two problems this guards against: (1) the
+      // Shift in that chord is our pivot-DOWN key, so without this it
+      // would start driving the pivot down; (2) macOS/Chrome does NOT
+      // deliver keyup for other keys while Cmd is held, so Shift's keyup
+      // never arrives and it stays stuck on. Clearing here — which also
+      // fires on the Cmd keydown itself (metaKey is set on that event) —
+      // stops any in-progress movement and prevents the chord's keys
+      // from registering, so the shortcut passes through cleanly.
+      if (e.metaKey || e.ctrlKey) {
+        resetHeldKeys();
+        return;
+      }
       const key = e.key.toLowerCase();
       // Only recognized movement keys are tracked — checking `key in
       // heldKeys` first stops an arbitrary key (CapsLock, Escape, etc.)
@@ -133,12 +193,18 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     };
     window.addEventListener("keydown", handleDown);
     window.addEventListener("keyup", handleUp);
+    // Losing window focus (app switch, the screenshot crosshair taking
+    // over, Cmd-Tab, etc.) means any subsequent keyup won't reach us, so
+    // a still-held key would stick on. Reset everything on blur as the
+    // catch-all for every missed-keyup case, not just Cmd shortcuts.
+    window.addEventListener("blur", resetHeldKeys);
     // Cleanup function: React calls this if the component ever unmounts,
     // removing the listeners so they don't keep firing (and leaking
     // memory) after this component no longer exists.
     return () => {
       window.removeEventListener("keydown", handleDown);
       window.removeEventListener("keyup", handleUp);
+      window.removeEventListener("blur", resetHeldKeys);
     };
   }, []); // empty dependency array: run once on mount, never again
 
@@ -196,12 +262,10 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
         .addScaledVector(up, dy * scale);
 
       // Move camera and pivot together (a pure translation, no rotation
-      // change) — same rigid-translation pattern as arrow-key traversal
-      // below, which is what keeps this from fighting with the
-      // camera.lookAt() call in the main useFrame loop.
-      livePivot.current.add(worldDelta);
-      camera.position.add(worldDelta);
-      syncPivot();
+      // change), clamped to the pivot bounds — same rigid-translation
+      // pattern as arrow-key traversal below, which is what keeps this
+      // from fighting with the camera.lookAt() call in the useFrame loop.
+      applyPivotDelta(worldDelta);
     };
 
     canvas.addEventListener("pointerdown", handlePointerDown);
@@ -226,7 +290,7 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
       canvas.removeEventListener("pointercancel", stopPanning);
       canvas.removeEventListener("lostpointercapture", stopPanning);
     };
-  }, [camera, gl, setPivot, syncPivot]);
+  }, [camera, gl, applyPivotDelta]);
 
   // useFrame (from R3F) runs this callback once per rendered frame —
   // typically 60 times per second. `delta` is the time in seconds since
@@ -272,9 +336,7 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     );
     if (move.lengthSq() > 0) {
       move.multiplyScalar(PIVOT_SPEED * delta);
-      livePivot.current.add(move);
-      camera.position.add(move);
-      syncPivot();
+      applyPivotDelta(move);
     }
 
     // 1. ZOOM logic (W/S)
@@ -291,6 +353,20 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     }
     if (heldKeys.s) {
       camera.position.addScaledVector(direction, -MOVE_SPEED * delta);
+    }
+    // Clamp the camera-to-pivot distance to the zoom guard rails (same
+    // range OrbitControls enforces for scroll) by scaling the offset
+    // vector to the clamped length. Guarded against a ~zero distance so
+    // the scale factor never divides by zero.
+    if (heldKeys.w || heldKeys.s) {
+      const d = camera.position.distanceTo(livePivot.current);
+      const cd = clamp(d, MIN_ZOOM_DIST, MAX_ZOOM_DIST);
+      if (d > 1e-5 && cd !== d) {
+        camera.position
+          .sub(livePivot.current)
+          .multiplyScalar(cd / d)
+          .add(livePivot.current);
+      }
     }
 
     // 2. ORBIT logic (A/D)
@@ -332,6 +408,12 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     // value the camera uses — so the marker moves in the exact same frame
     // as the camera, with no React-state round-trip to lag behind.
     pivotMarkerRef.current?.position.copy(livePivot.current);
+
+    // 5. Publish the camera's orientation for the Toolbar's octant gizmo,
+    // which renders in its own Canvas and mirrors the main view's angle.
+    // A plain mutable quaternion (not store state) keeps this per-frame
+    // sync from re-rendering React 60×/second — see lib/cameraSync.ts.
+    cameraOrientation.copy(camera.quaternion);
   });
 
   return null;
