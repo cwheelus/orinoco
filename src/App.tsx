@@ -1,15 +1,23 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
 import { useStore } from "./store/useStore";
 import { PointCloud } from "./components/PointCloud";
-import { CameraRig } from "./components/CameraRig";
+import {
+  CameraRig,
+  MIN_ZOOM_DIST,
+  MAX_ZOOM_DIST,
+} from "./components/CameraRig";
 import { Axes } from "./components/Axes";
 import { CartesianGrid } from "./components/CartesianGrid";
+import { IsolationTransition } from "./components/IsolationTransition";
 import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
 import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
+// The bundled sample dataset, imported as raw CSV text (Vite `?raw`). The
+// exact same parseCSV → setDataPoints path a user's uploaded CSV takes.
+import sampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
 
 /**
  * Orinoco Flow Visualizer - Main Application Entry
@@ -84,8 +92,8 @@ function App() {
   //     were excluded, so the analyst knows their point count may not
   //     match every row in the source file.
   //  3. Failure (parseCSV rejects) — nothing replaces the current
-  //     dataset; the previous data.json or last-loaded CSV stays
-  //     active, and the banner shows parseCSV's specific error
+  //     dataset; the previously-loaded dataset stays active, and the
+  //     banner shows parseCSV's specific error
   //     message (wrong column count, empty file, etc.) rather than a
   //     generic "something went wrong."
   const handleFileSelected = async (file: File) => {
@@ -112,6 +120,27 @@ function App() {
       setLoadError(err instanceof Error ? err.message : "Failed to load CSV.");
     }
   };
+
+  // Load the bundled sample dataset once on mount, through the same
+  // parseCSV → setDataPoints pipeline as a user upload — so it's the
+  // initial dataset without any separate hardcoded-data code path. Wrap
+  // the raw CSV text in a File so parseCSV (which takes a File) is reused
+  // verbatim. Skipped-row banners are intentionally not surfaced here,
+  // since this isn't a user-initiated load.
+  useEffect(() => {
+    const file = new File([sampleCsv], "mixed-sign-sample.csv", {
+      type: "text/csv",
+    });
+    parseCSV(file)
+      .then(({ points, mapping }) =>
+        setDataPoints(points, { x: mapping.x, y: mapping.y, z: mapping.z }),
+      )
+      .catch((err) =>
+        setLoadError(
+          err instanceof Error ? err.message : "Failed to load sample data.",
+        ),
+      );
+  }, [setDataPoints]);
 
   return (
     <div className="w-screen h-screen bg-slate-900 relative">
@@ -348,19 +377,27 @@ function App() {
             Toolbar's grid icon; Axes (ticks/labels) stays visible
             either way, since coordinate labels remain useful on their
             own even without the box geometry. */}
-        {gridVisible && <CartesianGrid />}
-
-        {/* 
+        {/*
             ENGINE COMPONENTS:
             CameraRig: Custom keyboard logic for WASD + pivot traversal,
               also drives the pivot marker imperatively via pivotMarkerRef
-              (see #23) so it tracks the camera with zero frame lag.
+              (see #23) so it tracks the camera with zero frame lag. Sits
+              OUTSIDE IsolationTransition — it moves the camera, which must
+              not be affected by the scene-space transition transform.
             PointCloud: Mapped 3D nodes from dataset
             Axes: 3D labels (Billboarded to stay readable)
         */}
         <CameraRig pivotMarkerRef={pivotMarkerRef} />
-        <PointCloud />
-        <Axes />
+
+        {/* Everything that lives in grid/render space goes inside the
+            transition wrapper, so isolating an octant animates as one
+            coherent zoom rather than the grid, points, and labels each
+            snapping independently. */}
+        <IsolationTransition>
+          {gridVisible && <CartesianGrid />}
+          <PointCloud />
+          <Axes />
+        </IsolationTransition>
 
         {/* OrbitControls: Mouse-drag rotation only — panning is handled
             entirely by CameraRig's own pointer listener instead (see
@@ -379,6 +416,11 @@ function App() {
           makeDefault
           enableRotate={activeTool === "orbit"}
           enablePan={false}
+          // Zoom guard rails (scroll dolly): can't fly infinitely far out,
+          // and can't dolly through the point being looked at. The W/S
+          // keys clamp to the same range in CameraRig.
+          minDistance={MIN_ZOOM_DIST}
+          maxDistance={MAX_ZOOM_DIST}
         />
 
         {/*
@@ -402,9 +444,14 @@ function App() {
               [0.15, 0, 0],
             ]}
             color="#3b82f6"
-            lineWidth={2}
+            lineWidth={2.5}
             transparent
             opacity={0.8}
+            // depthTest off + a high renderOrder so the crosshair always
+            // draws on top of the axis lines instead of z-fighting them
+            // (both sit at the origin when the pivot is centered).
+            depthTest={false}
+            renderOrder={10}
           />
           <Line
             points={[
@@ -412,9 +459,14 @@ function App() {
               [0, 0.15, 0],
             ]}
             color="#3b82f6"
-            lineWidth={2}
+            lineWidth={2.5}
             transparent
             opacity={0.8}
+            // depthTest off + a high renderOrder so the crosshair always
+            // draws on top of the axis lines instead of z-fighting them
+            // (both sit at the origin when the pivot is centered).
+            depthTest={false}
+            renderOrder={10}
           />
           <Line
             points={[
@@ -422,9 +474,14 @@ function App() {
               [0, 0, 0.15],
             ]}
             color="#3b82f6"
-            lineWidth={2}
+            lineWidth={2.5}
             transparent
             opacity={0.8}
+            // depthTest off + a high renderOrder so the crosshair always
+            // draws on top of the axis lines instead of z-fighting them
+            // (both sit at the origin when the pivot is centered).
+            depthTest={false}
+            renderOrder={10}
           />
           {/* Subtl light cast by the pivot marker to illuminate nearby nodes */}
           <pointLight distance={3} intensity={5} color="#3b82f6" />

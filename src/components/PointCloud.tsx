@@ -4,6 +4,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import type { DataPoint, NumericFilter } from "../store/useStore";
 import { classColors, DEFAULT_CLASS_COLOR } from "../lib/classColors";
+import { inOctant } from "../lib/gridSpace";
 
 // Auto point-size model. Positions are normalized into the fixed -2..2
 // box, so on-screen crowding is driven by how MANY points share that
@@ -76,6 +77,7 @@ export function PointCloud() {
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const hiddenClasses = useStore((state) => state.hiddenClasses);
   const numericFilters = useStore((state) => state.numericFilters);
+  const isolatedOctant = useStore((state) => state.isolatedOctant);
 
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const hoveredIdRef = useRef<number | null>(null);
@@ -115,11 +117,13 @@ export function PointCloud() {
       if (!passesNumeric(p.x, numericFilters.x)) continue;
       if (!passesNumeric(p.y, numericFilters.y)) continue;
       if (!passesNumeric(p.z, numericFilters.z)) continue;
+      // Octant isolation hides everything outside the selected corner.
+      if (!inOctant(p, isolatedOctant)) continue;
       points.push(p);
       pts.push(positions[i]);
     }
     return { points, positions: pts };
-  }, [dataPoints, positions, hiddenClasses, numericFilters]);
+  }, [dataPoints, positions, hiddenClasses, numericFilters, isolatedOctant]);
 
   // Fill instance matrices (position only) and colors for the visible
   // subset, then cap mesh.count so only those instances draw/raycast.

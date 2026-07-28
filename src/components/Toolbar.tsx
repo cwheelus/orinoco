@@ -3,6 +3,7 @@ import {
   Paperclip,
   Database,
   Grid3x3,
+  Box,
   RotateCcw,
   Eye,
   EyeOff,
@@ -10,8 +11,28 @@ import {
   MousePointer2,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
-import type { AxisKey, FilterOp } from "../store/useStore";
+import type { AxisKey, FilterOp, ScalingMode } from "../store/useStore";
+
+// Scaling-mode options for the Grid page, in display order.
+const SCALING_MODES: { value: ScalingMode; label: string; hint: string }[] = [
+  {
+    value: "normalized",
+    label: "Auto-normalized",
+    hint: "Each axis fills the box against its own range.",
+  },
+  {
+    value: "real",
+    label: "Auto-real scale",
+    hint: "One shared scale — true relative distances across axes.",
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    hint: "Type a ± bound per axis below.",
+  },
+];
 import { classColors, DEFAULT_CLASS_COLOR } from "../lib/classColors";
+import { OctantGizmo } from "./OctantGizmo";
 
 // Operator dropdown options for the numeric filters, in display order.
 // "off" (—) means the axis isn't filtered.
@@ -54,7 +75,7 @@ interface ToolbarProps {
   onFileSelected: (file: File) => void;
 }
 
-type PageKey = "data" | "grid";
+type PageKey = "data" | "grid" | "isolate";
 
 // Fixed width of the icon strip itself, in pixels — this never
 // changes, unlike contentWidth below. Used both for layout (the
@@ -100,16 +121,21 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // checkboxes.
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const toggleTickAxis = useStore((state) => state.toggleTickAxis);
-
-  // Whether the experimental center Y axis (line + its ticks/title)
-  // is shown, and the setter to flip it — drives the Grid page's
-  // "Center Y axis" checkbox under Grid modes.
-  const centerYAxisVisible = useStore((state) => state.centerYAxisVisible);
-  const toggleCenterYAxis = useStore((state) => state.toggleCenterYAxis);
-  // The active grid layout mode and its setter — drives the Grid
-  // page's "Grid modes" radio selector (Standard vs. Zero plane).
-  const gridMode = useStore((state) => state.gridMode);
-  const setGridMode = useStore((state) => state.setGridMode);
+  // Scaling mode + custom bounds + their setters, and the current
+  // gridSpace (read for the custom inputs' placeholders, which show the
+  // active ± bound each axis is currently using) — drive the Grid page's
+  // scaling controls.
+  const tickDensity = useStore((state) => state.tickDensity);
+  const setTickDensity = useStore((state) => state.setTickDensity);
+  const scalingMode = useStore((state) => state.scalingMode);
+  const setScalingMode = useStore((state) => state.setScalingMode);
+  const customBounds = useStore((state) => state.customBounds);
+  const setCustomBound = useStore((state) => state.setCustomBound);
+  const displayRange = useStore((state) => state.gridSpace.DISPLAY_RANGE);
+  // Current isolated octant + setter — drives the Isolate page's gizmo,
+  // its status line, and the icon-strip button's active state.
+  const isolatedOctant = useStore((state) => state.isolatedOctant);
+  const setIsolatedOctant = useStore((state) => state.setIsolatedOctant);
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
   const [activePage, setActivePage] = useState<PageKey | null>(null);
@@ -333,20 +359,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           <RotateCcw size={16} />
         </button>
 
-        {/* ACTION: toggle grid visibility — fully functional, wired
-            to gridVisible in the store (see useStore.ts's toggleGrid
-            and App.tsx's conditional <CartesianGrid /> render). Icon
-            swaps between Eye/EyeOff to reflect current state, and the
-            button itself lights up (active state) whenever the grid
-            is currently shown, so its fill state doubles as a visual
-            indicator without needing to read the icon closely. */}
-        <button
-          onClick={toggleGrid}
-          className={iconButtonClass(gridVisible)}
-          title={gridVisible ? "Hide grid" : "Show grid"}
-        >
-          {gridVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-        </button>
+        {/* Grid visibility now lives in the Grid page ("Show grid"
+            checkbox) alongside the rest of the grid settings, rather
+            than as a separate icon-strip button. */}
 
         {/* ACTION: toggle mouse-drag mode between orbit (rotate) and
             pan (translate). Active state reflects which mode is
@@ -396,6 +411,22 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           title="Grid"
         >
           <Grid3x3 size={16} />
+        </button>
+
+        {/* PAGE: Isolate — the octant gizmo. Lit as active either when the
+            page is open OR whenever an octant is currently isolated, so an
+            active isolation stays visible in the strip with the panel shut
+            (otherwise a filtered-looking grid would have no on-screen
+            explanation). */}
+        <button
+          onClick={() => togglePage("isolate")}
+          className={iconButtonClass(
+            (activePage === "isolate" && contentWidth > 0) ||
+              isolatedOctant !== null,
+          )}
+          title="Isolate quadrant"
+        >
+          <Box size={16} />
         </button>
       </div>
 
@@ -622,6 +653,17 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                 <p className="text-[10px] font-bold text-blue-400 uppercase">
                   Grid
                 </p>
+                {/* Grid visibility — moved here from the icon strip so all
+                    grid settings live together on this page. */}
+                <label className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={gridVisible}
+                    onChange={toggleGrid}
+                    className="accent-blue-500"
+                  />
+                  Show grid
+                </label>
                 <div>
                   <p className="text-[10px] font-bold text-white/70 mb-1">
                     Tick labels
@@ -642,60 +684,140 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   ))}
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Grid modes
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold text-white/70">
+                      Tick density
+                    </p>
+                    <span className="text-[10px] font-mono text-white/50 tabular-nums">
+                      {tickDensity}/side
+                    </span>
+                  </div>
+                  {/* Target tick marks per side; Axes.tsx nice-rounds the
+                      step to roughly hit it. Higher = finer/more ticks. */}
+                  <input
+                    type="range"
+                    min={3}
+                    max={30}
+                    step={1}
+                    value={tickDensity}
+                    onChange={(e) => setTickDensity(parseInt(e.target.value, 10))}
+                    className="w-full accent-blue-500 cursor-pointer"
+                    aria-label="Tick density"
+                  />
+                  <div className="flex justify-between text-[9px] text-white/30 mt-0.5">
+                    <span>Coarse</span>
+                    <span>Fine</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-white/70 mb-1">
+                    Scaling
                   </p>
-                  {/* Center Y axis toggle — hides/shows the whole
-                      center-axis construct: the vertical line, its
-                      ticks/numbers, and its title (see Axes.tsx).
-                      Mirrors the Tick labels checkbox pattern; state
-                      lives in useStore as centerYAxisVisible. */}
-                  <label className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1">
-                    <input
-                      type="checkbox"
-                      checked={centerYAxisVisible}
-                      onChange={toggleCenterYAxis}
-                      className="accent-blue-500"
-                    />
-                    Center Y axis
-                  </label>
-                  {/* Grid layout mode — radio pair rather than a
-                      checkbox because the modes are mutually exclusive
-                      (and a third mode can slot in later without
-                      changing the control type). "Standard" = floor at
-                      the data minimum (existing behavior); "Zero plane"
-                      = an added horizontal plane at data-value 0, so
-                      mixed-sign data straddles it (Desmos-style). See
-                      CartesianGrid.tsx for the rendering. */}
-                  {(
-                    [
-                      ["standard", "Standard"],
-                      ["zero-plane", "Zero plane"],
-                    ] as const
-                  ).map(([mode, label]) => (
+                  {SCALING_MODES.map((m) => (
                     <label
-                      key={mode}
-                      className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
+                      key={m.value}
+                      className="flex items-start gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
                     >
                       <input
                         type="radio"
-                        name="grid-mode"
-                        checked={gridMode === mode}
-                        onChange={() => setGridMode(mode)}
-                        className="accent-blue-500"
+                        name="scaling-mode"
+                        checked={scalingMode === m.value}
+                        onChange={() => setScalingMode(m.value)}
+                        className="accent-blue-500 mt-0.5"
                       />
-                      {label}
+                      <span>
+                        {m.label}
+                        <span className="block text-[9px] text-white/35">
+                          {m.hint}
+                        </span>
+                      </span>
                     </label>
                   ))}
+                  {/* Custom ± bounds per axis — only shown in custom mode.
+                      Placeholder shows the axis's current bound (the auto
+                      value when left blank). Typing recomputes the grid
+                      live. */}
+                  {scalingMode === "custom" && (
+                    <div className="mt-1 space-y-1">
+                      {(["x", "y", "z"] as AxisKey[]).map((axis) => (
+                        <div key={axis} className="flex items-center gap-1">
+                          <span
+                            className="text-[9px] font-mono text-white/50 w-14 truncate shrink-0"
+                            title={axisLabels[axis]}
+                          >
+                            {axisLabels[axis]}
+                          </span>
+                          <span className="text-[9px] text-white/30 shrink-0">
+                            ±
+                          </span>
+                          <input
+                            type="number"
+                            value={customBounds[axis]}
+                            placeholder={String(
+                              Math.max(
+                                Math.abs(displayRange[axis].min),
+                                Math.abs(displayRange[axis].max),
+                              ),
+                            )}
+                            onChange={(e) =>
+                              setCustomBound(axis, e.target.value)
+                            }
+                            className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                            aria-label={`${axisLabels[axis]} bound`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-0.5">
-                    Scaling modes
-                  </p>
-                  <p className="text-[10px] text-white/40">
-                    Switch between independent per-axis and uniform scaling —
-                    coming soon.
-                  </p>
+              </>
+            )}
+            {activePage === "isolate" && (
+              <>
+                <p className="text-[10px] font-bold text-blue-400 uppercase">
+                  Isolate
+                </p>
+                <p className="text-[10px] text-white/40">
+                  Click a cube to isolate that corner of the grid. Click
+                  inside the outline but off the cubes to show everything
+                  again.
+                </p>
+                {/* The gizmo mirrors the main view's rotation, so the cube
+                    you click is the corner sitting in that same on-screen
+                    position. */}
+                <OctantGizmo />
+                <div className="flex items-start justify-between gap-2">
+                  {/* Names the isolated corner by axis rather than by
+                      initial — real column names often share a first
+                      letter (invel_pps / invel_bpp both give "I"), which
+                      made an abbreviated form ambiguous. */}
+                  <div className="text-[10px] text-white/50 font-mono min-w-0">
+                    {isolatedOctant ? (
+                      ([" x", "y", "z"] as const).map((_, i) => {
+                        const label = [
+                          axisLabels.x,
+                          axisLabels.y,
+                          axisLabels.z,
+                        ][i];
+                        return (
+                          <div key={label} className="truncate">
+                            {isolatedOctant[i] > 0 ? "+" : "−"} {label}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <span>Showing all</span>
+                    )}
+                  </div>
+                  {isolatedOctant && (
+                    <button
+                      onClick={() => setIsolatedOctant(null)}
+                      className="text-[9px] text-blue-400 hover:text-blue-300 transition-colors shrink-0"
+                      title="Show the full grid"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </>
             )}
