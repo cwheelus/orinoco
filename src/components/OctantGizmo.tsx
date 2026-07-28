@@ -1,5 +1,10 @@
-import { useRef } from "react";
-import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useRef, useEffect } from "react";
+import {
+  Canvas,
+  useFrame,
+  useThree,
+  type ThreeEvent,
+} from "@react-three/fiber";
 import { Line } from "@react-three/drei";
 import * as THREE from "three";
 import { useStore } from "../store/useStore";
@@ -75,7 +80,7 @@ function GizmoScene() {
   const setIsolatedOctant = useStore((state) => state.setIsolatedOctant);
   const groupRef = useRef<THREE.Group>(null);
   const hoveredRef = useRef<THREE.Mesh | null>(null);
-
+  const { gl } = useThree();
   // Mirror the main camera's angle. The gizmo's own camera is fixed, so
   // applying the INVERSE of the main camera's rotation to the model makes
   // the cube present the same face the main grid currently presents —
@@ -84,10 +89,25 @@ function GizmoScene() {
     groupRef.current?.quaternion.copy(cameraOrientation).invert();
   });
 
+  // Cursor is scoped to THIS gizmo's own canvas (gl.domElement) rather
+  // than document.body — the gizmo runs in its own separate <Canvas>,
+  // so document.body was a global override that leaked onto unrelated
+  // page elements (e.g. the isolation status-line text), fighting their
+  // own cursor styles. Scoping it here means it can only ever affect
+  // this small widget.
   const setHover = (mesh: THREE.Mesh | null) => {
     hoveredRef.current = mesh;
-    document.body.style.cursor = mesh ? "pointer" : "";
+    gl.domElement.style.cursor = mesh ? "pointer" : "";
   };
+
+  // Belt-and-suspenders: if this component unmounts while a cube is
+  // still hovered (e.g. the Isolate panel is closed mid-hover), restore
+  // the cursor so it can't get stuck — pointerout won't fire on unmount.
+  useEffect(() => {
+    return () => {
+      gl.domElement.style.cursor = "";
+    };
+  }, [gl]);
 
   return (
     <group ref={groupRef}>
