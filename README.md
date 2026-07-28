@@ -2,7 +2,7 @@
 
 Project Orinoco is a browser-native 3D visualization tool for exploring network telemetry. It projects selected traffic features into a three-dimensional Cartesian space, allowing analysts to inspect individual observations, navigate spatial relationships, and investigate clusters interactively.
 
-The application visualizes network flow features within a 3D Cartesian coordinate system. Analysts can navigate the environment, inspect individual data points, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Analysts are no longer limited to the bundled sample dataset — any CSV matching the expected shape (three numeric columns, one or two text columns) can be loaded directly in-browser.
+The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (three numeric columns, one or two text columns) can be loaded directly in-browser — the bundled sample dataset itself now loads through this same CSV pipeline, rather than a separate hardcoded data path.
 
 ---
 
@@ -13,20 +13,21 @@ The application visualizes network flow features within a 3D Cartesian coordinat
 **Demo Videos:**
 [Watch Orinoco MVP Walkthrough 7/8/2026](https://youtu.be/Gr2Yjx_JF_4)
 [Watch Orinoco MVP Walkthrough 7/20/2026](https://youtu.be/_KvzO14yMGE)
+[Watch Orinoco Signed Grid & Octant Isolation Walkthrough](https://youtu.be/tIFLs0QYwfM)
 
 Example walkthrough:
 
 - Navigate the 3D environment using keyboard and mouse controls
 - Hover over threat nodes to inspect metadata
 - Select nodes to change the active pivot location
-- Explore surrounding data points from different perspectives
+- Isolate a spatial octant to focus on one corner of the data
 - Load a new CSV dataset directly from the toolbar, with the grid, axis labels, and points all updating to match
 
 ---
 
 ## Screenshots
 
-> **Note:** the screenshots below are outdated (pre-dating the pan tool, data filters, and grid modes work) and are pending an update. See the demo videos above for the current UI in the meantime.
+> **Note:** the screenshots below predate the signed-grid/octant-isolation rework (PR #42) and are pending an update. See the demo videos above for the current UI in the meantime.
 
 ### Main Visualization View
 
@@ -42,11 +43,18 @@ _(placeholder — screenshot to be retaken)_
 
 # Key Features
 
-## 3D Cartesian Plot Visualization
+## Symmetric 3D Cartesian Plot Visualization
 
 Project Orinoco renders high-dimensional network features in an interactive WebGL environment using Three.js and React Three Fiber.
 
-The plotting volume is an open-face Cartesian box, built in `CartesianGrid.tsx`. Tick marks, numeric labels, and axis titles are rendered separately in `Axes.tsx`. Each axis is independently scaled to the dataset's numeric range, rather than assuming a fixed bound — tick labels always reflect real data-space values, and recompute automatically whenever a new dataset is loaded.
+Every axis is symmetric and signed — the display range for each axis is always `[-M, +M]`, where `M` is derived from the dataset's farthest value on that axis (plus a 10% margin, rounded outward). Data-zero therefore always sits at the exact center of the plotting volume, and both positive and negative values are visible regardless of the dataset's actual sign distribution. This replaces an earlier floor-anchored, open-face box design.
+
+The reference frame is drawn in two parts:
+
+- **`CartesianGrid.tsx`** — a single horizontal grid plane positioned at data-zero's render height (the box center for the full grid), plus a faint full 12-edge wireframe box outlining the plotting volume for depth reference
+- **`Axes.tsx`** — the three bold coordinate axes, each running the full length of its axis through the origin with an arrowhead and a single column-name title at the positive end, plus adaptive tick marks
+
+Each axis is independently scaled to the dataset's numeric range by default — tick labels always reflect real data-space values, and recompute automatically whenever a new dataset loads or the scaling mode changes (see **Scaling Modes** below).
 
 Data dimensions (bundled sample dataset):
 
@@ -68,8 +76,11 @@ Analysts can load any CSV dataset directly in-browser via the toolbar's file pic
 2. The three numeric columns are mapped to X/Y/Z, in the order they appear in the file's header row
 3. Text columns are mapped to a unique identifier (`uid`) and a classification label (`class`) — the column with the highest ratio of unique values is treated as the identifier
 4. Malformed files (wrong number of numeric columns, no text columns, empty file) fail with a specific, visible error message rather than silently producing bad output or crashing
+5. Rows with missing or invalid numeric values are skipped individually rather than failing the whole file — a banner reports which row numbers were excluded
 
-Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to the original sample dataset.
+Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to any one dataset.
+
+**No separate default-data code path:** the bundled sample (`sample-data/mixed-sign-sample.csv`, 500 rows straddling zero on all three axes) is imported as raw CSV text via Vite's `?raw` loader, wrapped in a `File`, and run through the exact same `parseCSV → setDataPoints` pipeline a user upload takes. The store starts with an empty dataset; `App.tsx` loads the sample on mount.
 
 ```mermaid
 flowchart LR
@@ -79,7 +90,7 @@ flowchart LR
     D --> E[Error banner shown, previous dataset stays active]
     C -- Yes --> F[Classify text columns: uid = most unique values, class = remaining column]
     F --> G[setDataPoints in store]
-    G --> H[computeGridSpace recomputes scale and ranges]
+    G --> H[computeGridSpace recomputes scale, ranges, and octant isolation clears]
     G --> I[axisLabels updated]
     H --> J[Grid and points re-render]
     I --> J
@@ -110,6 +121,12 @@ The visualization environment supports analyst-focused navigation.
 | Mouse Click   | Set selected node as new pivot                                                                 |
 | Toolbar Reset | Return pivot to origin                                                                         |
 
+### Navigation Guardrails
+
+- **Zoom limits** — shared `MIN_ZOOM_DIST` (0.15) / `MAX_ZOOM_DIST` (18), enforced both by OrbitControls' scroll dolly and the W/S keys, so the camera can neither pass through a point at close range in an unbounded way nor fly infinitely far out
+- **Pivot bounds** — the pivot cannot be moved more than 50% beyond the grid walls, clamped by a shared helper used by both arrow-key traversal and drag-panning, so rotation and the pivot marker stay in lockstep even when the clamp engages
+- **Stuck-key protection** — OS screenshot shortcuts that don't deliver a `keyup` while a modifier key is held (e.g. macOS Cmd+Shift+4) are detected and clear all held movement keys, so the camera can't drift indefinitely from a "stuck" key
+
 ---
 
 ## Dynamic Pivot System
@@ -125,7 +142,7 @@ When the pivot changes:
 
 **Lockstep marker tracking:** the pivot marker is driven imperatively by `CameraRig.tsx`, in the same per-frame update as the camera itself, rather than being bound to React state. A state-driven marker lagged a frame behind the camera's own imperative movement, since store updates commit asynchronously relative to the render-frame loop — the imperative approach eliminates that lag entirely.
 
-Users can reset the investigation pivot to the origin coordinate through the toolbar's reset control, providing a consistent baseline for spatial exploration.
+Isolating an octant (see below) also resets the pivot to the origin, since the old pivot was a coordinate in the pre-isolation mapping and no longer corresponds to the same data.
 
 ---
 
@@ -159,23 +176,49 @@ A loaded CSV's own class values inherit these colors where names match, and fall
 
 ---
 
-## Grid Modes & Axis Display
+## Grid Display & Scaling
 
-The Grid page in the Toolbar gives analysts control over how the Y axis and grid are presented:
+The Grid page in the Toolbar controls how the reference grid and axes are presented and scaled.
 
-- **Per-axis tick label visibility** — each of the three axes' tick marks and numeric labels can be hidden independently, decluttering the view without removing the axis itself
-- **Center Y axis** — an experimental Desmos-style vertical axis running through the center of the floor plane (rather than the box's corner edge), with its own ticks and title. Toggleable as a single unit — hiding it removes the line, its ticks, and its title together, while independent wall-edge Y references remain
-- **Grid modes** — a Standard mode (existing floor-anchored behavior) and a Zero plane mode, which adds a horizontal reference plane at data-value 0. Mixed-sign datasets visibly straddle this plane; on all-positive datasets the plane is intentionally suppressed, since the floor already sits at zero
+- **Show grid** — toggles the wireframe box and grid plane; axis lines, tick marks, and labels remain visible regardless, since coordinate reference stays useful even without the box geometry
+- **Per-axis tick label visibility** — each of the three axes' tick marks and numeric labels can be hidden independently
+- **Tick density** — a slider (3–30, default 10) controlling how many tick marks appear per axis; the actual step size is rounded to a "nice" 1–2–5 number so labels stay human-readable. Tick marks and numbers scale per-frame by camera distance to hold a constant on-screen size rather than ballooning on approach
+- **Scaling modes** — see below
 
-## Data Filtering & Point Sizing
+### Scaling Modes
 
-The Data page in the Toolbar supports narrowing down the visible point cloud:
+`computeGridSpace()` accepts a `ScalingConfig` that determines each axis's half-extent (`M`):
 
-- **Class visibility filtering** — individual classification categories can be hidden from the render, each shown with its assigned color swatch
-- **Per-axis numeric filters** — points can be filtered by value range on any of the three axes, using an operator dropdown (>, ≥, <, ≤, =, between) plus one or two value boxes
-- **Point-size scaling** — point size adjusts automatically based on dataset density (denser datasets get smaller points so they don't merge into a blob), with a manual multiplier slider and one-click reset to the automatic size
+| Mode                          | Behavior                                                                                                                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Auto-normalized** (default) | Per-axis `M`, derived independently from each axis's own farthest value. Good for comparing shape when magnitudes differ wildly across axes.                                                                                    |
+| **Auto-real scale**           | One shared `M`, derived from the single farthest value across all axes — a unit of data renders as the same length on every axis (true relative distances). Small-range axes bunch near the origin rather than filling the box. |
+| **Custom**                    | A typed ± bound per axis; any axis left blank or invalid falls back to its auto-normalized value.                                                                                                                               |
 
-Rendering is done as a single instanced mesh, so filtering by class or numeric range doesn't remount or reallocate anything — hidden points are simply excluded from the draw call.
+Mode and bound changes recompute the grid live.
+
+---
+
+## Octant Isolation
+
+The Isolate page in the Toolbar lets an analyst focus on one spatial corner (octant) of the data.
+
+A small 3D gizmo (`OctantGizmo.tsx`) — eight cubes in a wireframe outline — mirrors the main view's rotation in lockstep, so whichever cube occupies a given on-screen position is the octant currently facing the camera there.
+
+| Action                                    | Result                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| Click a cube                              | That octant enlarges to fill the entire grid; all points outside it are hidden |
+| Click the same cube again                 | Reverts to the full grid (toggle)                                              |
+| Click inside the outline but off any cube | Reverts to the full grid                                                       |
+| Click Reset                               | Reverts to the full grid                                                       |
+
+**Implementation:** isolation is expressed purely as a change to each axis's display range — the selected octant's sides become one-sided (`[0, M]` or `[-M, 0]`) instead of the full `[-M, M]`. Since that range still maps onto the same fixed render box, the octant enlarges automatically and everything downstream follows for free: points reposition, tick numbers rescale and refine, and the axes reposition so data-zero sits at a box corner instead of the center. Points exactly at `0` on an isolated axis are assigned to the positive side, so the eight octants partition the dataset cleanly with no point counted twice.
+
+**Transition:** because both the pre- and post-isolation mappings are the same affine transform (`(value − CENTER) × SCALE`), `IsolationTransition.tsx` re-renders children into the new mapping immediately, applies a compensating transform that puts everything back where it visually was, then eases that transform to identity over 450ms — a real zoom effect using one group scale/position per frame, with no instance-buffer re-upload, so it stays cheap at scale. The transition deliberately only animates octant changes; a new CSV load can rescale by orders of magnitude and would otherwise swoop unpredictably.
+
+**Camera sync:** the gizmo reads a plain mutable quaternion (`lib/cameraSync.ts`), written by `CameraRig` every frame — deliberately not routed through the Zustand store, since a per-frame store write would re-render every store subscriber 60 times a second.
+
+Isolation clears automatically whenever a new CSV loads, since an octant chosen against the old dataset says nothing about the new one.
 
 ---
 
@@ -187,14 +230,16 @@ A Blender-style docked side panel provides quick access to data and display cont
 
 **Icon strip contents:**
 
-| Icon           | Action                                                                                                                      |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Paperclip      | Opens the native file picker to load a CSV                                                                                  |
-| Reset          | Returns the pivot to the origin                                                                                             |
-| Eye / Eye-off  | Toggles the Cartesian grid box on or off (axis labels remain visible either way)                                            |
-| Hand / Pointer | Switches the mouse-drag behavior between orbit (rotate around pivot) and pan (translate view)                               |
-| Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling                              |
-| Grid           | Opens a panel for per-axis tick label visibility, the center Y axis toggle, and grid mode selection (Standard / Zero plane) |
+| Icon           | Action                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| Paperclip      | Opens the native file picker to load a CSV                                                     |
+| Reset          | Returns the pivot to the origin                                                                |
+| Hand / Pointer | Switches the mouse-drag behavior between orbit (rotate around pivot) and pan (translate view)  |
+| Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling |
+| Grid           | Opens a panel for grid visibility, tick labels, tick density, and scaling mode selection       |
+| Box            | Opens the Isolate page (octant gizmo) — lights up while an octant is isolated                  |
+
+Grid visibility was moved from a standalone icon-strip toggle into the Grid page itself, consolidating display settings into one place.
 
 ```mermaid
 stateDiagram-v2
@@ -203,6 +248,18 @@ stateDiagram-v2
     Open --> Collapsed: click same page icon or drag border past close threshold
     Open --> Open: click different page icon, width preserved
 ```
+
+---
+
+## Data Filtering & Point Sizing
+
+The Data page in the Toolbar supports narrowing down the visible point cloud:
+
+- **Class visibility filtering** — individual classification categories can be hidden from the render, each shown with its assigned color swatch
+- **Per-axis numeric filters** — points can be filtered by value range on any of the three axes, using an operator dropdown (>, ≥, <, ≤, =, between) plus one or two value boxes
+- **Point-size scaling** — point size adjusts automatically based on dataset density (denser datasets get smaller points so they don't merge into a blob), with a manual multiplier slider and one-click reset to the automatic size
+
+Rendering is done as a single instanced mesh, so filtering by class, numeric range, or octant isolation doesn't remount or reallocate anything — hidden points are simply excluded from the draw call.
 
 ---
 
@@ -231,16 +288,18 @@ flowchart TB
         CartesianGrid
         Axes
         PointCloud
+        OctantGizmo
         CameraRig
     end
-    Store[("Zustand Store: pivot, hoveredPoint, dataPoints, gridSpace, axisLabels, gridVisible, activeTool, hiddenClasses, numericFilters, hiddenTickAxes, centerYAxisVisible, gridMode")]
+    Store[("Zustand Store: pivot, hoveredPoint, dataPoints, gridSpace, axisLabels, gridVisible, activeTool, hiddenClasses, numericFilters, hiddenTickAxes, scalingMode, customBounds, isolatedOctant, tickDensity")]
 
-    Toolbar -- "setDataPoints / setPivot / toggleGrid" --> Store
+    Toolbar -- "setDataPoints / setScalingMode / setIsolatedOctant" --> Store
     PointCloud -- "setHoveredPoint / setPivot" --> Store
     CameraRig -- "setPivot" --> Store
     Store -- "dataPoints, gridSpace" --> PointCloud
     Store -- "gridSpace, axisLabels" --> Axes
-    Store -- "pivot, gridVisible" --> CartesianGrid
+    Store -- "gridSpace" --> CartesianGrid
+    Store -- "isolatedOctant" --> OctantGizmo
     Store -- "hoveredPoint, axisLabels" --> HUD
 ```
 
@@ -260,19 +319,19 @@ Given the two-layer model above, some mechanism is needed to synchronize state b
 - Components subscribe to only the specific state slice they need (e.g. `state => state.pivot`), so a change to one field doesn't cause unrelated components to re-render
 - Minimal boilerplate compared to Redux's actions/reducers/dispatch pattern, appropriate for the amount of shared state this application needs
 
-**Exception to the store-driven pattern:** the pivot cross marker is driven imperatively by `CameraRig.tsx` via a ref, not by reading `pivot` from the store — see **Dynamic Pivot System** above for why.
+**Exceptions to the store-driven pattern:** the pivot cross marker is driven imperatively by `CameraRig.tsx` via a ref, not by reading `pivot` from the store (see **Dynamic Pivot System** above). Similarly, the Isolate gizmo's camera-mirroring reads a plain mutable quaternion written every frame by `CameraRig` (`lib/cameraSync.ts`), deliberately outside Zustand, since a per-frame store write would re-render every subscriber 60 times a second.
+
+### Why symmetric, signed grid ranges
+
+Earlier, `computeGridSpace()` anchored each axis at its data minimum, adding a center reference line only for datasets that introduced negative values. The current model instead always returns a symmetric `[-M, +M]` range per axis, where `M` is derived from the farthest value on that axis (plus a margin, rounded outward) — so data-zero always sits at a known, consistent position (the box center for the full grid, a box edge or corner when an octant is isolated), regardless of the dataset's actual sign distribution. This removed the need for a separate "center axis" toggle and a "zero plane" mode switch — the zero-crossing reference is simply always drawn.
 
 ### Why a custom Cartesian grid instead of a built-in helper
 
-`@react-three/drei` ships a generic `Grid` helper — a flat, infinite floor-plane grid intended for general 3D scene reference (e.g. a game editor's floor). It doesn't support bounded dimensions, selectable wall faces, or tick marks/axis labels tied to specific data ranges.
-
-The spec calls for a box with visible walls on specific sides only (an "open-face" box, per analyst feedback that a fully enclosed cube obscures the view), plus numbered ticks synced to axis name labels. No configuration of the drei helper could produce this — so `CartesianGrid.tsx` and `Axes.tsx` were built as custom components instead, giving full control over bounds, open/closed faces, and tick/label placement.
+`@react-three/drei` ships a generic `Grid` helper — a flat, infinite floor-plane grid intended for general 3D scene reference (e.g. a game editor's floor). It doesn't support bounded dimensions, per-axis symmetric ranges, octant-based partial ranges, or tick marks/axis labels tied to specific data ranges. `CartesianGrid.tsx` and `Axes.tsx` were built as custom components instead, giving full control over the plane position, wireframe box, and tick/label placement.
 
 ### Dynamic per-axis scaling
 
-Each axis scales independently based on the currently active dataset's actual range, computed by `computeGridSpace()` in `src/lib/gridSpace.ts`. This was originally a set of constants computed once at load time from the bundled `data.json`; it's now a pure function, re-run every time a new dataset is loaded, so the grid box, tick labels, and point positions all stay correct regardless of which dataset — bundled or loaded via CSV — is currently active.
-
-Independent per-axis scaling (rather than one shared scale) exists because the real dataset's three columns (byte counts, packet rates, bytes-per-packet) live on wildly different magnitudes — a single shared scale factor compressed two of the three axes into a nearly flat sliver. `gridSpace.ts`'s output is the single source of truth for these bounds, shared by `CartesianGrid.tsx` (box geometry), `Axes.tsx` (ticks/labels), and `PointCloud.tsx` (point positioning), so the three can never drift out of sync with each other.
+Each axis's display range is computed by `computeGridSpace()` in `src/lib/gridSpace.ts`, a pure function re-run whenever the active dataset, scaling mode, custom bounds, or isolated octant changes (see `useStore.ts`'s `gridSpaceFor()` helper, which centralizes every input this computation depends on so no dependency can be silently missed). `gridSpace.ts`'s output — `DISPLAY_RANGE`, `SCALE`, `CENTER`, `ZERO_RENDER`, and `toRenderSpace` — is the single source of truth shared by `CartesianGrid.tsx` (box/plane geometry), `Axes.tsx` (ticks/labels), and `PointCloud.tsx` (point positioning and octant filtering via `inOctant()`), so the three can never drift out of sync with each other.
 
 ---
 
@@ -298,21 +357,30 @@ orinoco/
 │
 ├── sample-data/
 │   └── mixed-sign-sample.csv
-│       └── 500-row mixed positive/negative sample, for
-│           demonstrating the zero-plane grid mode
+│       └── 500-row mixed positive/negative sample — now the
+│           bundled default dataset, loaded via the CSV pipeline
 │
 ├── src/
 │   ├── components/
 │   │   ├── Axes.tsx
-│   │   │   └── Tick marks, numeric labels, and axis titles —
-│   │   │       reads DISPLAY_RANGE and axisLabels from the store
+│   │   │   └── Bold coordinate axes through the origin, tick
+│   │   │       marks/labels, and axis titles
 │   │   │
 │   │   ├── CartesianGrid.tsx
-│   │   │   └── Open-face Cartesian plotting volume
+│   │   │   └── Horizontal grid plane at data-zero + full
+│   │   │       12-edge wireframe box
 │   │   │
 │   │   ├── CameraRig.tsx
-│   │   │   └── WASD + arrow/space/shift navigation, and imperative
-│   │   │       per-frame tracking of the pivot marker
+│   │   │   └── WASD + arrow/space/shift navigation, drag-panning,
+│   │   │       zoom/pivot guardrails, and imperative per-frame
+│   │   │       tracking of the pivot marker and camera-sync quaternion
+│   │   │
+│   │   ├── OctantGizmo.tsx
+│   │   │   └── The Isolate page's rotating cube-of-cubes control
+│   │   │
+│   │   ├── IsolationTransition.tsx
+│   │   │   └── Animates the affine transform between full-grid and
+│   │   │       isolated-octant mappings
 │   │   │
 │   │   ├── PointCloud.tsx
 │   │   │   └── Threat data rendering and interaction — reads the
@@ -320,12 +388,15 @@ orinoco/
 │   │   │
 │   │   └── Toolbar.tsx
 │   │       └── Docked, resizable side panel: CSV loader, origin
-│   │           reset, grid visibility toggle, Data/Grid pages
+│   │           reset, Data/Grid/Isolate pages
 │   │
 │   ├── lib/
 │   │   ├── gridSpace.ts
-│   │   │   └── computeGridSpace() — derives plotting bounds and
-│   │   │       per-axis scaling for a given dataset
+│   │   │   └── computeGridSpace() — derives symmetric plotting
+│   │   │       bounds, scaling, and octant-isolated ranges
+│   │   ├── cameraSync.ts
+│   │   │   └── Mutable camera-orientation quaternion shared between
+│   │   │       CameraRig and OctantGizmo, outside the store
 │   │   ├── classColors.ts
 │   │   │   └── Single source of truth for classification → color mapping
 │   │   └── parseCSV.ts
@@ -337,17 +408,23 @@ orinoco/
 │   │       └── Global visualization state: pivot, hoveredPoint,
 │   │           dataPoints, gridSpace, axisLabels, gridVisible,
 │   │           activeTool, hiddenClasses, numericFilters,
-│   │           hiddenTickAxes, centerYAxisVisible, gridMode
+│   │           hiddenTickAxes, scalingMode, customBounds,
+│   │           isolatedOctant, tickDensity
 │   │
 │   ├── types.ts
 │   │   └── Shared DataPoint interface, used by the store, parser,
 │   │       and grid math so the shape is defined exactly once
 │   │
 │   ├── App.tsx
-│   │   └── Application shell, Canvas, HUD, and CSV-load orchestration
+│   │   └── Application shell, Canvas, HUD, CSV-load orchestration,
+│   │       and mount-time loading of the bundled sample via the
+│   │       CSV pipeline
 │   │
 │   ├── main.tsx
 │   │   └── React entry point
+│   │
+│   ├── vite-env.d.ts
+│   │   └── Type declarations enabling the `?raw` CSV import
 │   │
 │   └── index.css
 │       └── Tailwind CSS configuration
@@ -386,8 +463,15 @@ Example — loading a CSV:
 
 1. User clicks the toolbar's paperclip icon and selects a file
 2. `parseCSV.ts` classifies columns and validates the shape
-3. On success, `setDataPoints` replaces the dataset and recomputes grid geometry and axis labels atomically
+3. On success, `setDataPoints` replaces the dataset, clears any isolated octant, and recomputes grid geometry and axis labels atomically
 4. The grid, axis labels, HUD panel, and rendered points all update to reflect the new dataset
+
+Example — isolating an octant:
+
+1. User clicks a cube on the Isolate page's gizmo
+2. `setIsolatedOctant` recomputes `gridSpace` with that octant's one-sided ranges and resets the pivot to the origin
+3. `IsolationTransition` animates the affine remap over 450ms
+4. Points outside the octant are filtered from the render via `inOctant()`; ticks and axes rescale to the narrower range
 
 ---
 
@@ -409,6 +493,7 @@ Used for:
 
 - Fast development workflow
 - Optimized production builds
+- Raw-text CSV import (`?raw`) for the bundled sample dataset
 
 ---
 
@@ -465,8 +550,9 @@ Managed state:
 - Distinct class names present in the active dataset (`availableClasses`)
 - Class visibility and per-axis numeric filters (`hiddenClasses`, `numericFilters`)
 - Per-axis tick label visibility (`hiddenTickAxes`)
-- Center Y axis visibility (`centerYAxisVisible`)
-- Active grid layout mode — standard or zero-plane (`gridMode`)
+- Active axis-scaling mode and custom bounds (`scalingMode`, `customBounds`)
+- Currently isolated octant, if any (`isolatedOctant`)
+- Tick-density target (`tickDensity`)
 
 ---
 
@@ -505,15 +591,15 @@ npm run lint
 
 ### Lucide React
 
-Icon library used for interface elements, including the toolbar's icon strip (paperclip, reset, grid visibility, pan/orbit toggle, Data/Grid page icons).
+Icon library used for interface elements, including the toolbar's icon strip (paperclip, reset, pan/orbit toggle, Data/Grid/Isolate page icons).
 
 ---
 
 # Data Configuration
 
-The application defaults to a bundled JSON dataset (`src/data.json`), sourced from Sentient Solutions' `flow-viz-sample1.csv`, and remains available even after loading a different CSV — reloading the page returns to this default, since datasets are held in memory only (see **Dynamic Dataset Loading** above for why persistence was deliberately left out).
+The application no longer bundles a static `data.json`. The default dataset (`sample-data/mixed-sign-sample.csv`, 500 rows with values straddling zero on all three axes) loads on mount through the same `parseCSV → setDataPoints` pipeline a user's own CSV upload takes — there is no separate hardcoded-data code path.
 
-Loaded datasets, whether bundled or CSV, share the same internal shape:
+Loaded datasets, whether the bundled sample or a user CSV, share the same internal shape:
 
 ```json
 {
@@ -525,17 +611,7 @@ Loaded datasets, whether bundled or CSV, share the same internal shape:
 }
 ```
 
-For the bundled dataset, the mapping is:
-
-```text
-x (orig_bytes)  → X axis
-y (invel_pps)   → Y axis
-z (invel_bpp)   → Z axis
-className       → Visualization category
-uid             → Point identifier displayed in the HUD
-```
-
-For a loaded CSV, this same shape is produced by `parseCSV.ts`'s auto-detection — see **Dynamic Dataset Loading**.
+Column-to-axis mapping is produced by `parseCSV.ts`'s auto-detection — see **Dynamic Dataset Loading**.
 
 Current visualization categories (bundled sample dataset):
 
@@ -546,9 +622,7 @@ Current visualization categories (bundled sample dataset):
 | `qc`       | `#00dd00` |
 | `zt`       | `#0000dd` |
 
-Classification colors are sourced from Sentient Solutions' `colors.csv` and defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) falls back to a default color rather than failing.
-
-The rendering architecture separates the visualization layer from the data source, allowing future datasets to be introduced through a data transformation layer without requiring changes to the 3D rendering components — this is now realized directly through CSV loading rather than remaining purely aspirational.
+Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) falls back to a default color rather than failing.
 
 ---
 
@@ -598,7 +672,7 @@ npm install
 npm run dev
 ```
 
-By default this serves the app at [http://localhost:5173](http://localhost:5173) (Vite's default dev port).
+By default this serves the app at [http://localhost:5173](http://localhost:5173) (Vite's default dev port). On load, the app boots directly into the bundled mixed-sign sample dataset.
 
 ## Build for Production
 
@@ -622,13 +696,13 @@ Sample CSV files for manually exercising the loader live in `test-data/`:
 | `test-10k.csv`       | 10,000-row synthetic dataset, for performance testing                                                                                   |
 | `test-malformed.csv` | Deliberately invalid (wrong column count), for confirming `parseCSV.ts`'s error handling surfaces correctly instead of failing silently |
 
-A curated mixed-sign sample also lives in `sample-data/`:
+The bundled default dataset lives in `sample-data/`:
 
-| File                    | Purpose                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `mixed-sign-sample.csv` | 500-row sample with both positive and negative values, for demonstrating the zero-plane grid mode |
+| File                    | Purpose                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mixed-sign-sample.csv` | 500-row sample with both positive and negative values on all three axes — loaded automatically on app start |
 
-Load any of these through the toolbar's paperclip icon.
+Load any of the `test-data/` files through the toolbar's paperclip icon to try a different dataset.
 
 ## Key Dependency Versions
 
@@ -661,14 +735,15 @@ See the [Issues tab](https://github.com/cwheelus/orinoco/issues) for planned wor
 
 Project Orinoco is a functional MVP demonstrating:
 
-- Interactive 3D threat visualization
-- Cartesian spatial rendering with dynamic per-axis scaling, recomputed per active dataset
+- Interactive 3D threat visualization with a symmetric, signed Cartesian grid
+- Octant isolation with a camera-synced gizmo and animated transitions
+- Three axis-scaling modes: auto-normalized, auto-real-scale, and custom bounds
 - WASD camera navigation with dedicated arrow/space/shift pivot traversal, plus orbit and pan drag modes
+- Navigation guardrails: zoom limits, pivot bounds, and stuck-key protection
 - Dynamic pivot exploration with origin reset and lockstep marker tracking
-- Dynamic CSV dataset loading, with an auto-detecting parser and clear error handling for malformed files
-- A docked, resizable toolbar for data loading, pivot reset, grid visibility, dataset filtering, and grid/axis display modes
+- CSV-only dataset loading (no separate hardcoded default), with an auto-detecting parser and clear error handling for malformed or partially invalid files
+- A docked, resizable toolbar for data loading, pivot reset, dataset filtering, and grid/scaling/isolation controls
 - Instanced point rendering with count-adaptive sizing for large datasets
-- Per-axis tick label visibility, an experimental center-axis grid layout, and a zero-anchored reference plane mode
 - Real-time metadata inspection, labeled with the active dataset's real column names
 - SOC-style analyst interface
 
