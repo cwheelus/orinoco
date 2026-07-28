@@ -11,7 +11,7 @@ import { cameraOrientation } from "../lib/cameraSync";
 const CUBE = 0.62; // edge length of each of the 8 octant cubes
 const GAP = 0.09; // space between them, so each is separately clickable
 const OFFSET = (CUBE + GAP) / 2; // center distance of a cube from the middle
-// Half-extent of the click-to-reset outline. The 0.8 pulls it in by 20%
+// Half-extent of the click-to-reset outline. The 0.65 pulls it in by 35%
 // from the natural cube-cluster-plus-padding size, which is what keeps the
 // whole outline (corners included) inside the widget's viewport instead of
 // running off its edges. It still clears the cube cluster's own half-extent
