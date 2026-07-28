@@ -2,7 +2,7 @@
 
 **Project Orinoco — 3D Cyber Threat Intelligence Visualizer**
 
-*Version 1.0 | Last updated: July 2026*
+*Last updated: July 2026*
 
 ---
 
@@ -16,6 +16,7 @@
 6. [Using the Toolbar](#6-using-the-toolbar)
    - [Data Page](#data-page)
    - [Grid Page](#grid-page)
+   - [Isolate Page](#isolate-page)
 7. [Loading Your Own CSV Dataset](#7-loading-your-own-csv-dataset)
 8. [Troubleshooting](#8-troubleshooting)
 9. [Keyboard & Mouse Reference](#9-keyboard--mouse-reference)
@@ -29,6 +30,7 @@ Orinoco is a browser-native 3D visualization tool for exploring network telemetr
 - Inspect individual observations and their metadata
 - Navigate spatial relationships between data points
 - Investigate clusters interactively
+- Isolate specific spatial regions (octants) for focused analysis
 - Load custom datasets directly in the browser
 
 Orinoco runs entirely client-side — no server, no database, no cloud dependency. All data processing happens in-memory in your browser.
@@ -81,21 +83,19 @@ npm run dev
 
 By default, the application serves at `http://localhost:5173`.
 
-### 3.3 Load the Sample Dataset
+### 3.3 First Look
 
-1. Click the **paperclip icon** in the right-side toolbar.
-2. Select `flow-viz-sample1.csv` (or any compatible CSV from the `sample-data/` or `test-data/` folders).
-3. The grid, axis labels, and data points will update automatically.
+On launch, Orinoco automatically loads the bundled **mixed-sign sample dataset** (500 rows with both positive and negative values). You will see:
 
-### 3.4 First Look
-
-When the dataset loads, you will see:
-
-- **A 3D Cartesian grid** showing the bounds of your data
+- **A symmetric 3D Cartesian grid** centered at the origin, with data-zero at the box center
+- **Three coordinate axes** (X, Y, Z) running through the origin with arrowheads and column-name labels
+- **A horizontal grid plane** at data-value zero
+- **A faint wireframe box** outlining the plotting volume
 - **Colored data points** representing individual network flows
-- **Axis labels** showing the actual column names from your CSV
 - **A HUD panel** in the top-left showing the currently hovered point's metadata
 - **A toolbar** docked to the right edge for data and display controls
+
+![Orinoco boot state with symmetric grid and Grid page open](docs/images/main.jpg)
 
 ---
 
@@ -123,7 +123,7 @@ Move the pivot point itself to explore different regions of the data:
 | **Space** | Raise pivot along the Y axis |
 | **Shift** | Lower pivot along the Y axis |
 
-When the pivot changes, the camera translates by the same offset, preserving your viewing angle. The pivot is marked by a **six-armed cross reticle** in the scene.
+When the pivot changes, the camera translates by the same offset, preserving your viewing angle. The pivot is marked by a **six-armed cross reticle** at the origin.
 
 ### 4.3 Mouse Controls
 
@@ -138,6 +138,14 @@ Toggle between **Orbit** and **Pan** modes using the **hand / pointer icon** in 
 ### 4.4 Reset
 
 Click the **reset icon** (circular arrow) in the toolbar to return the pivot to the origin `(0, 0, 0)`.
+
+### 4.5 Navigation Guardrails
+
+Orinoco enforces soft limits to prevent losing the camera:
+
+- **Zoom limits:** The camera cannot move closer than **0.15 units** or farther than **18 units** from the pivot
+- **Pivot bounds:** The pivot cannot be moved more than **50% beyond the grid walls** (prevents wandering into empty space)
+- **Stuck-key protection:** Taking screenshots with OS shortcuts (e.g., macOS Cmd+Shift+4) automatically releases all held keys
 
 ---
 
@@ -160,7 +168,7 @@ Click any data point to set it as the new investigation pivot. The camera will s
 
 ### 5.3 Class Colors
 
-Points are colored by their classification. The default color scheme:
+Points are colored by their classification:
 
 | Class | Color | Hex |
 |-------|-------|-----|
@@ -177,7 +185,7 @@ Unrecognized classes from custom CSVs will use a default fallback color.
 
 The toolbar is a Blender-style docked panel on the right edge of the screen. It has two parts:
 
-- **Icon strip** — fixed buttons for common actions
+- **Icon strip** — fixed buttons for common actions and page navigation
 - **Content pane** — expandable panel for detailed controls
 
 Drag the border between the icon strip and the viewport to resize the content pane open or closed.
@@ -188,10 +196,10 @@ Drag the border between the icon strip and the viewport to resize the content pa
 |------|--------|
 | 📎 Paperclip | Open file picker to load a CSV |
 | 🔄 Reset | Return pivot to origin |
-| 👁 Eye / Eye-Off | Toggle Cartesian grid box visibility (axis labels remain) |
 | ✋ Hand / Pointer | Switch mouse drag between Orbit (rotate) and Pan (translate) |
 | 📊 Data | Open Data page (filters, point sizing) |
-| ⊞ Grid | Open Grid page (axis display, grid modes) |
+| ⊞ Grid | Open Grid page (scaling, tick density, tick labels, grid visibility) |
+| ☐ Box | Open Isolate page (octant gizmo) — lights up when an octant is isolated |
 
 ### Data Page
 
@@ -200,8 +208,8 @@ The Data page controls which points are visible and how they appear.
 #### Class Visibility Filtering
 
 - Each classification category appears as a toggle with its color swatch.
-- Uncheck a class to hide all points of that category from the render.
-- Hidden points are excluded from the draw call — no reallocation, instant toggle.
+- Uncheck a class to hide all points of that category.
+- Hidden points are excluded from the draw call — instant toggle, no reallocation.
 
 #### Per-Axis Numeric Filters
 
@@ -210,7 +218,7 @@ Filter points by value range on any axis:
 1. Select an axis (X, Y, or Z).
 2. Choose an operator: `>`, `≥`, `<`, `≤`, `=`, or `between`.
 3. Enter one or two numeric values.
-4. Only points matching the filter criteria remain visible.
+4. Only points matching all active filters remain visible.
 
 > **Tip:** Combine class filters and numeric filters to isolate specific threat clusters.
 
@@ -220,42 +228,67 @@ Filter points by value range on any axis:
 - **Manual multiplier:** Use the slider to scale all points up or down.
 - **Reset:** One-click return to automatic sizing.
 
+![Data page showing class filters and point size controls](docs/images/filter.jpg)
+
 ### Grid Page
 
-The Grid page controls how the reference grid and axes are displayed.
+The Grid page controls how the reference grid is displayed and scaled.
 
-#### Per-Axis Tick Label Visibility
+#### Show Grid
 
-Toggle tick marks and numeric labels independently for each axis:
+Toggle the wireframe box and grid plane on or off. Axis lines, tick marks, and labels remain visible even when the grid is hidden.
 
-- **X axis ticks**
-- **Y axis ticks**
-- **Z axis ticks**
+#### Tick Labels
 
-Hiding ticks declutters the view without removing the axis line itself.
+Toggle tick marks and numeric labels independently for each axis (X, Y, Z). Hiding ticks declutters the view without removing the axis line itself.
 
-#### Center Y Axis
+#### Tick Density
 
-An experimental **Desmos-style vertical axis** running through the center of the floor plane (rather than the corner edge of the box). Toggling this shows/hides:
+A slider (3–30, default 10) controls how many tick marks appear along each axis. The actual step size is rounded to a "nice" number (1, 2, or 5 × a power of 10) so labels remain human-readable. Higher values = finer granularity.
 
-- The center axis line
-- Its tick marks
-- Its axis title
+> **Note:** Tick marks and numbers automatically scale to stay a constant size on screen as you zoom in and out. Zooming in spreads ticks apart; zooming out pushes outer ones off-screen.
 
-Wall-edge Y references remain visible independently.
+#### Scaling Modes
 
-#### Grid Modes
+| Mode | Behavior |
+|------|----------|
+| **Auto-normalized** (default) | Each axis fills the box independently based on its own data range. Good for comparing shape when magnitudes differ wildly. |
+| **Auto-real scale** | One shared scale factor from the global farthest value across all axes. A unit of data is the same render length on every axis — true relative distances. |
+| **Custom** | Type a ± bound per axis. Any axis left blank falls back to its auto-normalized value. Useful for forcing a specific plotting range. |
 
-| Mode | Description |
-|------|-------------|
-| **Standard** | Floor-anchored grid. The plotting volume sits on a flat plane at the minimum Y value. |
-| **Zero Plane** | Adds a horizontal reference plane at data-value `0`. Mixed-sign datasets visibly straddle this plane. On all-positive datasets, the plane is suppressed since the floor already sits at zero. |
+Mode changes recompute the grid live. In **Auto-real scale**, small-range axes will bunch near the origin rather than filling the box.
+
+### Isolate Page
+
+The Isolate page lets you focus on one spatial corner (octant) of the data.
+
+#### Octant Gizmo
+
+A small 3D cube-of-cubes mirrors the main view's rotation, so the spatial corner you click is the one currently occupying that on-screen position.
+
+| Action | Result |
+|--------|--------|
+| **Click a cube** | That octant enlarges to fill the entire grid; all points outside it are hidden |
+| **Click the same cube again** | Reverts to the full grid (toggle behavior) |
+| **Click inside the outline but off any cube** | Reverts to the full grid |
+| **Click Reset** | Reverts to the full grid |
+
+When an octant is isolated:
+- The grid rescales so the selected corner fills the box
+- The axes reposition so data-zero sits at a box corner instead of the center
+- Tick marks automatically refine to match the narrower range
+- The **Box icon** in the icon strip lights up, so you know a filter is active even with the panel closed
+- A status line names the isolated corner by its real column names (e.g., `+ orig_bytes`, `− invel_pps`, `+ invel_bpp`)
+
+> **Note:** Isolation is cleared automatically when you load a new CSV — an octant chosen for one dataset means nothing for another.
+
+![Isolate page with octant gizmo showing all 8 cubes](docs/images/isolate.cube.jpg)
 
 ---
 
 ## 7. Loading Your Own CSV Dataset
 
-You are not limited to the bundled sample data. Any CSV matching the expected shape can be loaded directly in-browser.
+You are not limited to the bundled sample. Any CSV matching the expected shape can be loaded directly in-browser.
 
 ### 7.1 Expected Format
 
@@ -295,21 +328,18 @@ If the file fails to load, you will see a specific error message:
 | Error | Cause |
 |-------|-------|
 | Empty file | The file has no header row or no data rows |
-| Wrong number of numeric columns | The CSV does not have exactly 3 numeric columns (found more or fewer) |
+| Wrong number of numeric columns | The CSV does not have exactly 3 numeric columns |
 | No text/label columns found | The CSV lacks text columns for UID and Classification |
-| No valid data rows | Every row had missing or invalid numeric values; nothing could be rendered |
-| File read error | The browser could not read the file (corrupted, unreadable, or access denied) |
+| No valid data rows | Every row had missing or invalid numeric values |
+| File read error | The browser could not read the file |
 
-> **Partial load banner:** If your CSV loads but some rows are skipped due to missing or invalid numeric values, a red banner appears showing which row numbers were excluded (1-indexed, counting the header row as row 1). The valid rows still render — you do not need to reload the file. Check the source rows for blank cells, non-numeric values in numeric columns, or malformed entries.
-
-> **Note:** Column order determines axis assignment. There is currently no manual override UI — ensure your CSV columns are ordered X, Y, Z, UID, Class (or similar) before loading.
+> **Partial load banner:** If your CSV loads but some rows are skipped due to missing or invalid numeric values, a red banner appears showing which row numbers were excluded. The valid rows still render — you do not need to reload the file.
 
 ### 7.5 Known Limitations
 
+- Column order determines axis assignment. There is currently no manual override UI.
 - Only the first two text columns are used (UID and Classification). Additional text columns are ignored.
 - Datasets are held in memory only — reloading the page returns to the bundled default dataset.
-- Column assignment is determined by file order, not by user selection.
-- Rows with invalid or missing numeric values are skipped during load rather than causing the entire file to fail.
 
 ---
 
@@ -317,19 +347,19 @@ If the file fails to load, you will see a specific error message:
 
 ### I loaded a CSV but don't see any points
 
-1. Check the **Data page** in the toolbar — a class filter or numeric filter may be hiding all points.
-2. Check the **Grid page** — ensure the grid itself is visible (the eye toggle does not affect points).
+1. Check the **Data page** — a class filter or numeric filter may be hiding all points.
+2. Check the **Isolate page** — an active octant isolation may be filtering out your data.
 3. Verify your CSV loaded without errors. Check the browser console for parse messages.
 
 ### The camera is lost / I can't see the data
 
 1. Click the **reset button** in the toolbar to return to the origin.
 2. Press **S** a few times to zoom out and reorient.
-3. If the pivot was moved far from the data, reset and use **W** to zoom back in.
+3. The camera cannot zoom farther than 18 units from the pivot — if you hit the limit, orbit to a new angle.
 
 ### The grid disappeared
 
-- Click the **eye icon** in the toolbar to toggle grid visibility. Axis labels remain visible even when the grid box is hidden.
+- Open the **Grid page** in the toolbar and check the **Show grid** checkbox.
 
 ### Points are too small or too large
 
@@ -342,18 +372,13 @@ If the file fails to load, you will see a specific error message:
 - Axis labels are drawn from your CSV's header row.
 - If labels don't match expectations, verify your CSV columns are in the correct order before loading.
 
-### Camera feels slightly off after mixing keyboard and mouse movement
-
-- This is a known interaction between the keyboard navigation system (WASD/orbit) and the mouse-drag orbit system. Both control the camera independently and can drift out of sync when used together in the same session.
-- **Fix:** Click the **Reset** button in the toolbar to re-center the pivot and restore camera alignment.
-- Tracked in GitHub issues [#5](https://github.com/cwheelus/orinoco/issues/5) and [#7](https://github.com/cwheelus/orinoco/issues/7).
-
 ### Performance is slow with a large dataset
 
 - Orinoco uses **instanced mesh rendering** and has been tested with 10,000+ points.
 - If performance degrades:
   - Use **class filters** to hide categories you don't need
   - Use **numeric filters** to reduce the visible point count
+  - Use **octant isolation** to focus on a spatial subset
   - Ensure your browser's hardware acceleration is enabled
 
 ---
@@ -390,10 +415,12 @@ If the file fails to load, you will see a specific error message:
 |------|--------------|
 | 📎 Paperclip | Load CSV file |
 | 🔄 Reset | Return pivot to origin |
-| 👁 Eye | Toggle grid visibility |
 | ✋ Hand / Pointer | Toggle Orbit vs Pan mode |
 | 📊 Data | Open Data filters page |
 | ⊞ Grid | Open Grid display page |
+| ☐ Box | Open Isolate octant page |
+
+![Bottom HUD showing keyboard controls and class color legend](docs/images/hud.jpg)
 
 ---
 
