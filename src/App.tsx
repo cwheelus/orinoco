@@ -116,6 +116,12 @@ function App() {
   // Whether the grid box is currently shown — toggled from the
   // Toolbar's grid on/off icon.
   const gridVisible = useStore((state) => state.gridVisible);
+  // Whether the interface is in dark or light mode — toggled from the
+  // Toolbar's sun/moon icon. Drives the "light" class applied to the
+  // root div below, which activates every theme.ts token's light:
+  // variant (see index.css's @custom-variant declaration for why this
+  // is a manual class rather than Tailwind's OS-driven dark: default).
+  const darkMode = useStore((state) => state.darkMode);
   // Replaces the active dataset (and its derived grid geometry/axis
   // labels, computed together — see useStore.ts's setDataPoints).
   const setDataPoints = useStore((state) => state.setDataPoints);
@@ -193,7 +199,11 @@ function App() {
   }, [setDataPoints]);
 
   return (
-    <div className={`w-screen h-screen ${SURFACE.root} relative`}>
+    <div
+      className={`w-screen h-screen ${SURFACE.root} relative ${
+        darkMode ? "" : "light"
+      }`}
+    >
       {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
           Rendered as its own fixed-position panel — NOT nested inside
           the HUD's flex layout below — since its screen position is

@@ -9,6 +9,8 @@ import {
   EyeOff,
   Hand,
   MousePointer2,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import type { AxisKey, FilterOp, ScalingMode } from "../store/useStore";
@@ -66,6 +68,9 @@ const FILTER_OPS: { value: FilterOp; label: string }[] = [
  * sizing) stay as raw Tailwind in this file.
  *
  * ICON STRIP CONTENTS:
+ *  - Dark/light mode toggle (action, flips darkMode in the store —
+ *    see lib/theme.ts's light: variants and index.css's custom
+ *    variant declaration for how this actually recolors the app)
  *  - Load CSV (action)
  *  - Reset pivot to origin (action)
  *  - Grid on/off (action, toggles gridVisible in the store — fully
@@ -114,6 +119,10 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const setPointSizeScale = useStore((state) => state.setPointSizeScale);
   const toggleGrid = useStore((state) => state.toggleGrid);
+  // Dark/light mode + its toggle — drives the icon-strip's sun/moon
+  // button, the very first action in the strip (see below).
+  const darkMode = useStore((state) => state.darkMode);
+  const toggleDarkMode = useStore((state) => state.toggleDarkMode);
   const activeTool = useStore((state) => state.activeTool);
   const setActiveTool = useStore((state) => state.setActiveTool);
   const axisLabels = useStore((state) => state.axisLabels);
@@ -341,6 +350,21 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           onChange={handleFileChange}
           className="hidden"
         />
+
+        {/* ACTION: toggle dark/light mode. Icon reflects the CURRENT
+            mode (Moon while dark, Sun while light) — same convention
+            as Eye/EyeOff and Hand/MousePointer2 below. Lit (active
+            styling) specifically while in LIGHT mode, since dark is
+            the app's default — mirrors how the pan tool only lights
+            up for its non-default state, rather than lighting up for
+            whichever boolean happens to be true. */}
+        <button
+          onClick={toggleDarkMode}
+          className={iconButtonClass(!darkMode)}
+          title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {darkMode ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
 
         {/* ACTION: load CSV */}
         <button

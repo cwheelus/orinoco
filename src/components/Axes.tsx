@@ -8,11 +8,10 @@ import {
   type AxisRange,
 } from "../lib/gridSpace";
 import { useStore } from "../store/useStore";
+import { useSceneTheme } from "../hooks/useSceneTheme";
 
 // Axis line + arrowhead styling.
-const AXIS_COLOR = "#b8c2d6";
 const AXIS_WIDTH = 2;
-const TICK_COLOR = "#8899b0";
 const ARROW_LEN = 0.16;
 const ARROW_RADIUS = 0.045;
 const AXIS_TITLE_FONT = 0.18;
@@ -153,6 +152,7 @@ function axisDefs(zx: number, zy: number, zz: number): AxisDef[] {
 // on-screen size (zooming in spreads the ticks apart and takes the outer
 // ones off-screen, rather than crowding more in).
 export function Axes() {
+  const { scene, text } = useSceneTheme();
   const { camera } = useThree();
   const { SCALE, DISPLAY_RANGE, CENTER, ZERO_RENDER } = useStore(
     (state) => state.gridSpace,
@@ -192,13 +192,13 @@ export function Axes() {
     <group>
       {axes.map((ax) => (
         <group key={ax.key}>
-          <Line points={ax.line} color={AXIS_COLOR} lineWidth={AXIS_WIDTH} />
+          <Line points={ax.line} color={scene.axis} lineWidth={AXIS_WIDTH} />
           <mesh position={ax.arrowPos} rotation={ax.arrowRot}>
             <coneGeometry args={[ARROW_RADIUS, ARROW_LEN, 12]} />
-            <meshBasicMaterial color={AXIS_COLOR} />
+            <meshBasicMaterial color={scene.axis} />
           </mesh>
           <Billboard position={ax.titlePos}>
-            <Text fontSize={AXIS_TITLE_FONT} color="white">
+            <Text fontSize={AXIS_TITLE_FONT} color={text.title}>
               {axisLabels[ax.key]}
             </Text>
           </Billboard>
@@ -216,11 +216,11 @@ export function Axes() {
               >
                 <Line
                   points={[[0, 0, 0], ax.markEnd]}
-                  color={TICK_COLOR}
+                  color={scene.tick}
                   lineWidth={1}
                 />
                 <Billboard position={ax.labelPos}>
-                  <Text fontSize={LABEL_FONT} color="#cccccc">
+                  <Text fontSize={LABEL_FONT} color={text.label}>
                     {t.label}
                   </Text>
                 </Billboard>
