@@ -91,3 +91,50 @@ export const ICON_BUTTON = {
   // Applied otherwise — dim by default, brightens on hover.
   idle: "text-white/50 hover:bg-white/10 hover:text-white",
 };
+
+// --- App.tsx-specific tokens below ---
+// The Toolbar's panels (icon strip, content pane) and App.tsx's HUD
+// panels (Point Analysis card, control guide, color legend) are
+// visually DIFFERENT surfaces on purpose — different backgrounds,
+// different opacities, different roles. They're kept as separate,
+// named tokens rather than forced into one shared "panel" look,
+// since collapsing genuinely different designs into one token would
+// hide real intent, not simplify it.
+
+export const SURFACE = {
+  // The app's root background, behind everything.
+  root: "bg-slate-900",
+  // The Point Analysis card's background — a translucent version of
+  // the same base color as `root`, so the 3D scene stays faintly
+  // visible behind the card rather than looking like a separate,
+  // opaque window.
+  card: "bg-slate-900/80 backdrop-blur-md",
+};
+
+export const PANEL_APP = {
+  // The bottom-left keyboard control-guide box.
+  controlGuide: "bg-white/5 backdrop-blur-sm border border-white/10 rounded",
+  // The bottom-right classification color-legend box.
+  legend: "bg-black/60 ring-1 ring-white/10 rounded",
+  // Thin separator lines used WITHIN a panel (between Point Analysis
+  // metric rows, and the small vertical dividers between control-guide
+  // groups) — deliberately fainter than PANEL.border above, which
+  // separates entire panels from each other rather than rows within one.
+  hairline: "border-white/5",
+};
+
+export const ERROR = {
+  // The CSV-load error/info banner.
+  bg: "bg-red-950/80 backdrop-blur-md border-l-2 border-red-500 ring-1 ring-white/10 shadow-2xl",
+  label: "text-red-400",
+};
+
+export const KBD = {
+  // A single keyboard-key chip (used for every WASD/arrow/Spc/Shift
+  // key in the bottom control guide). Defined once here — but see
+  // App.tsx's new <Kbd> component, which wraps this token so the
+  // identical markup (padding, rounding, font) that used to be
+  // hand-repeated 7 times is now written once and reused, rather than
+  // just having 7 copies of the same className string.
+  base: "px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono",
+};
