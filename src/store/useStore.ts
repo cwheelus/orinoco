@@ -143,6 +143,12 @@ interface VisualizerState {
   // with the grid hidden, since they're still useful reference points
   // on their own).
   gridVisible: boolean;
+  // Whether the interface renders in dark or light mode. Toggled from
+  // the Toolbar's sun/moon icon. Purely a presentation preference —
+  // doesn't affect any data, grid math, or the 3D scene's own colors
+  // (see lib/theme.ts, whose tokens read this to pick their light/dark
+  // variant). Defaults to dark, matching the app's original design.
+  darkMode: boolean;
   // Which navigation mode mouse-drag currently performs: "orbit" rotates
   // around the pivot (default, via OrbitControls); "pan" translates the
   // camera/pivot together instead (via CameraRig's drag handler). Toggled
@@ -217,6 +223,8 @@ interface VisualizerState {
   setHoveredPoint: (p: DataPoint | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
+  // Flips darkMode. Called from the Toolbar's dark/light toggle button.
+  toggleDarkMode: () => void;
   // Sets the active mouse-drag tool. Called from the Toolbar's hand-tool
   // toggle button.
   setActiveTool: (tool: ActiveTool) => void;
@@ -251,6 +259,9 @@ export const useStore = create<VisualizerState>((set) => ({
   hoveredPoint: null,
   // Grid starts visible by default.
   gridVisible: true,
+  // Dark mode is the default, matching the app's original (only)
+  // appearance before light mode existed.
+  darkMode: true,
   // Orbit is the default drag behavior — matches prior versions where
   // drag-to-rotate was the only option.
   activeTool: "orbit",
@@ -296,6 +307,7 @@ export const useStore = create<VisualizerState>((set) => ({
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
   setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
   toggleClassHidden: (className) =>

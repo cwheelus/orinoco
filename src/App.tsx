@@ -14,7 +14,9 @@ import { CartesianGrid } from "./components/CartesianGrid";
 import { IsolationTransition } from "./components/IsolationTransition";
 import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
-import { getClassColor } from "./lib/classColors"; // ← CHANGED: already correct
+import { getClassColor } from "./lib/classColors";
+import { SURFACE, PANEL_APP, TEXT, ERROR, KBD } from "./lib/theme";
+
 // The bundled sample dataset, imported as raw CSV text (Vite `?raw`). The
 // exact same parseCSV → setDataPoints path a user's uploaded CSV takes.
 import sampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
@@ -41,7 +43,56 @@ import sampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
  * other directly — both read from the same Zustand store, so state
  * changes in one (e.g. a 3D point being hovered, or a new CSV loaded)
  * can update the other without any direct coupling between them.
+ *
+ * STYLING: colors are pulled from ./lib/theme.ts's token objects
+ * (SURFACE, PANEL_APP, TEXT, ERROR, KBD) instead of inline Tailwind
+ * classes — see theme.ts's header comment for why, and Toolbar.tsx for
+ * the other half of the app's UI that uses the same file's tokens.
  */
+
+// A single keyboard-key chip, e.g. the "A" in "Orbit (A/D)". Extracted
+// as its own component rather than repeating the same className string
+// by hand 7 times (A, D, W, S, the arrow-cluster, Spc, Shift) — adding
+// an 8th key later is one line here, not a copy-pasted <kbd> block.
+function Kbd({ children }: { children: React.ReactNode }) {
+  return <kbd className={KBD.base}>{children}</kbd>;
+}
+
+// The thin vertical separator between control-guide groups (Orbit |
+// Depth | Pivot). Was two identical hand-written divs; a 4th group
+// later is one line, not a copy-pasted div.
+function ControlGuideDivider() {
+  return (
+    <div
+      className={`w-[1px] ${PANEL_APP.hairline} border-l h-6 self-end mb-1`}
+    />
+  );
+}
+
+// The three axis segments of the pivot cross marker, as [start, end]
+// point pairs. Was three near-identical <Line> blocks differing only
+// in `points`, each carrying its own copy of the same depthTest/
+// renderOrder explanation — mapped here instead so the explanation is
+// written once, and a hypothetical 4th marker segment is one array
+// entry, not a whole copied block.
+const CROSSHAIR_SEGMENTS: [
+  [number, number, number],
+  [number, number, number],
+][] = [
+  [
+    [-0.15, 0, 0],
+    [0.15, 0, 0],
+  ],
+  [
+    [0, -0.15, 0],
+    [0, 0.15, 0],
+  ],
+  [
+    [0, 0, -0.15],
+    [0, 0, 0.15],
+  ],
+];
+
 function App() {
   // "pivot": the point the camera currently orbits around. Starts at
   // the world origin (0,0,0) and updates when a data point is clicked
@@ -68,7 +119,13 @@ function App() {
   const gridVisible = useStore((state) => state.gridVisible);
   // Full dataset — needed for the color legend so unknown classes get
   // their deterministic generated color instead of being silently omitted.
-  const dataPoints = useStore((state) => state.dataPoints); // ← CHANGED: added
+  const dataPoints = useStore((state) => state.dataPoints);
+  // Whether the interface is in dark or light mode — toggled from the
+  // Toolbar's sun/moon icon. Drives the "light" class applied to the
+  // root div below, which activates every theme.ts token's light:
+  // variant (see index.css's @custom-variant declaration for why this
+  // is a manual class rather than Tailwind's OS-driven dark: default).
+  const darkMode = useStore((state) => state.darkMode);
   // Replaces the active dataset (and its derived grid geometry/axis
   // labels, computed together — see useStore.ts's setDataPoints).
   const setDataPoints = useStore((state) => state.setDataPoints);
@@ -156,7 +213,11 @@ function App() {
   );
 
   return (
-    <div className="w-screen h-screen bg-slate-900 relative">
+    <div
+      className={`w-screen h-screen ${SURFACE.root} relative ${
+        darkMode ? "" : "light"
+      }`}
+    >
       {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
           Rendered as its own fixed-position panel — NOT nested inside
           the HUD's flex layout below — since its screen position is
@@ -175,11 +236,15 @@ function App() {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <h1 className="text-xl font-black tracking-tighter uppercase text-white">
+            <h1
+              className={`text-xl font-black tracking-tighter uppercase ${TEXT.onFilled}`}
+            >
               Orinoco <span className="text-blue-500">Flow</span>
             </h1>
           </div>
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/40">
+          <p
+            className={`text-[10px] font-mono uppercase tracking-[0.2em] ${TEXT.muted}`}
+          >
             v1.0.0 // Sentient Solutions // Internal Systems
           </p>
         </div>
@@ -189,11 +254,13 @@ function App() {
             Analysis panel below for visual consistency. Cleared
             (setLoadError(null)) at the start of every new load attempt. */}
         {loadError && (
-          <div className="pointer-events-auto max-w-md p-3 bg-red-950/80 backdrop-blur-md border-l-2 border-red-500 ring-1 ring-white/10 shadow-2xl">
-            <p className="text-[10px] font-bold text-red-400 uppercase mb-1">
+          <div className={`pointer-events-auto max-w-md p-3 ${ERROR.bg}`}>
+            <p
+              className={`text-[10px] font-bold ${ERROR.label} uppercase mb-1`}
+            >
               CSV Load
             </p>
-            <p className="text-[11px] text-white/80">{loadError}</p>
+            <p className={`text-[11px] ${TEXT.emphasis}`}>{loadError}</p>
           </div>
         )}
 
@@ -203,19 +270,30 @@ function App() {
             show otherwise. */}
         <div className="w-72">
           {hoveredPoint && (
-            <div className="p-4 bg-slate-900/80 backdrop-blur-md border-l-2 border-blue-500 ring-1 ring-white/10 shadow-2xl transition-all">
+            <div
+              className={`p-4 ${SURFACE.card} border-l-2 border-blue-500 ring-1 ring-white/10 shadow-2xl transition-all`}
+            >
               <p className="text-[10px] font-bold text-blue-500 uppercase mb-2">
                 Point Analysis
               </p>
               <div className="space-y-2">
-                <div className="flex justify-between border-b border-white/5 pb-1">
-                  <span className="text-white/40 text-[10px]">UID</span>
-                  <span className="text-white font-mono text-xs">
+                <div
+                  className={`flex justify-between border-b ${PANEL_APP.hairline} pb-1`}
+                >
+                  {/* TEXT.faint (not a bare text-white/40) — this label is
+                      genuinely important content an analyst reads
+                      constantly, so it gets the same WCAG-compliant
+                      dimmest tier as the rest of the app rather than an
+                      even-fainter one-off value. See theme.ts. */}
+                  <span className={`${TEXT.faint} text-[10px]`}>UID</span>
+                  <span className={`${TEXT.onFilled} font-mono text-xs`}>
                     {hoveredPoint.uid}
                   </span>
                 </div>
-                <div className="flex justify-between border-b border-white/5 pb-1">
-                  <span className="text-white/40 text-[10px]">
+                <div
+                  className={`flex justify-between border-b ${PANEL_APP.hairline} pb-1`}
+                >
+                  <span className={`${TEXT.faint} text-[10px]`}>
                     Classification
                   </span>
                   {/* Color resolved by getClassColor() (lib/classColors.ts)
@@ -256,23 +334,25 @@ function App() {
                       correct even if this array's size ever changes,
                       rather than depending on someone remembering to
                       update a hardcoded index alongside it. */}
-                  <span className="text-white/40 text-[10px] block mb-1">
+                  <span className={`${TEXT.faint} text-[10px] block mb-1`}>
                     Metrics
                   </span>
                   {(["x", "y", "z"] as const).map((axis, i, arr) => (
                     <div
                       key={axis}
                       className={`flex justify-between pb-1 ${
-                        i < arr.length - 1 ? "border-b border-white/5" : ""
+                        i < arr.length - 1
+                          ? `border-b ${PANEL_APP.hairline}`
+                          : ""
                       }`}
                     >
                       <span
-                        className="text-white/40 text-[10px] truncate max-w-[60%]"
+                        className={`${TEXT.faint} text-[10px] truncate max-w-[60%]`}
                         title={axisLabels[axis]}
                       >
                         {axisLabels[axis]}
                       </span>
-                      <span className="text-white font-mono text-xs">
+                      <span className={`${TEXT.onFilled} font-mono text-xs`}>
                         {hoveredPoint[axis].toFixed(3)}
                       </span>
                     </div>
@@ -287,49 +367,35 @@ function App() {
             Pivot now lives in the Toolbar instead of here, so it isn't
             duplicated in two places. */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-          <div className="bg-white/5 p-3 backdrop-blur-sm border border-white/10 rounded flex gap-4">
+          <div className={`${PANEL_APP.controlGuide} p-3 flex gap-4`}>
             <div className="flex flex-col items-center">
               <span className="text-[8px] uppercase opacity-40 mb-1">
                 Orbit (A/D)
               </span>
-              <div className="flex gap-1 text-white">
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  A
-                </kbd>
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  D
-                </kbd>
+              <div className={`flex gap-1 ${TEXT.onFilled}`}>
+                <Kbd>A</Kbd>
+                <Kbd>D</Kbd>
               </div>
             </div>
-            <div className="w-[1px] bg-white/10 h-6 self-end mb-1" />
+            <ControlGuideDivider />
             <div className="flex flex-col items-center">
               <span className="text-[8px] uppercase opacity-40 mb-1">
                 Depth (W/S)
               </span>
-              <div className="flex gap-1 text-white">
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  W
-                </kbd>
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  S
-                </kbd>
+              <div className={`flex gap-1 ${TEXT.onFilled}`}>
+                <Kbd>W</Kbd>
+                <Kbd>S</Kbd>
               </div>
             </div>
-            <div className="w-[1px] bg-white/10 h-6 self-end mb-1" />
+            <ControlGuideDivider />
             <div className="flex flex-col items-center">
               <span className="text-[8px] uppercase opacity-40 mb-1">
                 Pivot (Arrows / Spc / Shift)
               </span>
-              <div className="flex gap-1 text-white">
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  ←→↑↓
-                </kbd>
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  Spc
-                </kbd>
-                <kbd className="px-2 py-0.5 bg-white/20 rounded text-xs font-bold font-mono">
-                  ⇧
-                </kbd>
+              <div className={`flex gap-1 ${TEXT.onFilled}`}>
+                <Kbd>←→↑↓</Kbd>
+                <Kbd>Spc</Kbd>
+                <Kbd>⇧</Kbd>
               </div>
             </div>
           </div>
@@ -339,10 +405,9 @@ function App() {
               generates deterministic hues for any unknown class — no white
               fallback. Replaces the old static classColors map which silently
               defaulted to white for classes outside its hardcoded four. */}
-          <div className="bg-black/60 p-3 ring-1 ring-white/10 rounded">
+          <div className={`${PANEL_APP.legend} p-3`}>
             <div className="flex gap-4">
               {classNames.map((className) => {
-                // ← CHANGED: uses derived classNames
                 const color = getClassColor(className);
                 return (
                   <div key={className} className="flex items-center gap-2">
@@ -353,7 +418,9 @@ function App() {
                         boxShadow: `0 0 8px ${color}`,
                       }}
                     />
-                    <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
+                    <span
+                      className={`text-[10px] uppercase font-bold ${TEXT.emphasis} tracking-widest`}
+                    >
                       {className}
                     </span>
                   </div>
@@ -363,7 +430,6 @@ function App() {
           </div>
         </div>
       </div>
-
       {/* 
           2. THE 3D CANVAS (RENDER ENGINE)
           'shadows' enabled for high fidelity (optional).
@@ -456,51 +522,25 @@ function App() {
             (see #23).
         */}
         <group ref={pivotMarkerRef}>
-          <Line
-            points={[
-              [-0.15, 0, 0],
-              [0.15, 0, 0],
-            ]}
-            color="#3b82f6"
-            lineWidth={2.5}
-            transparent
-            opacity={0.8}
-            // depthTest off + a high renderOrder so the crosshair always
-            // draws on top of the axis lines instead of z-fighting them
-            // (both sit at the origin when the pivot is centered).
-            depthTest={false}
-            renderOrder={10}
-          />
-          <Line
-            points={[
-              [0, -0.15, 0],
-              [0, 0.15, 0],
-            ]}
-            color="#3b82f6"
-            lineWidth={2.5}
-            transparent
-            opacity={0.8}
-            // depthTest off + a high renderOrder so the crosshair always
-            // draws on top of the axis lines instead of z-fighting them
-            // (both sit at the origin when the pivot is centered).
-            depthTest={false}
-            renderOrder={10}
-          />
-          <Line
-            points={[
-              [0, 0, -0.15],
-              [0, 0, 0.15],
-            ]}
-            color="#3b82f6"
-            lineWidth={2.5}
-            transparent
-            opacity={0.8}
-            // depthTest off + a high renderOrder so the crosshair always
-            // draws on top of the axis lines instead of z-fighting them
-            // (both sit at the origin when the pivot is centered).
-            depthTest={false}
-            renderOrder={10}
-          />
+          {/* One <Line> per entry in CROSSHAIR_SEGMENTS above, instead
+              of three hand-written blocks that differed only in
+              `points`. depthTest is off with a high renderOrder so the
+              crosshair always draws on top of the axis lines instead
+              of z-fighting them (both sit at the origin when the pivot
+              is centered) — explained once here rather than three
+              times inline. */}
+          {CROSSHAIR_SEGMENTS.map((points, i) => (
+            <Line
+              key={i}
+              points={points}
+              color="#3b82f6"
+              lineWidth={2.5}
+              transparent
+              opacity={0.8}
+              depthTest={false}
+              renderOrder={10}
+            />
+          ))}
           {/* Subtl light cast by the pivot marker to illuminate nearby nodes */}
           <pointLight distance={3} intensity={5} color="#3b82f6" />
         </group>

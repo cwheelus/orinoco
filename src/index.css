@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+/* Custom variant so `light:` classes respond to a manual `.light`
+   class on an ancestor (applied by App.tsx based on the store's
+   darkMode flag), rather than Tailwind's default dark: behavior,
+   which follows the OS's prefers-color-scheme instead. Dark remains
+   every token's baseline/default value in theme.ts — light-mode
+   overrides are added ONLY via this light: prefix, so existing dark
+   values never need to change, only get an override appended. */
+@custom-variant light (&:where(.light, .light *));
