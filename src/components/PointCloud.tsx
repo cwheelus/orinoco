@@ -3,7 +3,7 @@ import * as THREE from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import type { DataPoint, NumericFilter } from "../store/useStore";
-import { classColors, DEFAULT_CLASS_COLOR } from "../lib/classColors";
+import { getClassColor } from "../lib/classColors";
 import { inOctant } from "../lib/gridSpace";
 
 // Auto point-size model. Positions are normalized into the fixed -2..2
@@ -127,6 +127,28 @@ export function PointCloud() {
 
   // Fill instance matrices (position only) and colors for the visible
   // subset, then cap mesh.count so only those instances draw/raycast.
+  //
+  // COLOR RESOLUTION:
+  // Colors come from getClassColor() (lib/classColors.ts), NOT from a
+  // static map. This gives us three things the old static map couldn't:
+  //
+  //   1. Deterministic fallback colors for unknown classes — instead of
+  //      defaulting to white when a class isn't in a hardcoded map, we
+  //      hash the class name to a stable hue. Same name always gets the
+  //      same color, across reloads, across datasets.
+  //
+  //   2. Future manual overrides — getClassColor() already accepts an
+  //      overrides argument (second param). When the color-picker UI lands
+  //      (Phase 4 of #43), pass store.classColorOverrides here and the
+  //      instance colors will update automatically — no changes needed
+  //      in this file.
+  //
+  //   3. Hex contract — getClassColor() ALWAYS returns "#rrggbb" hex,
+  //      never HSL or named colors. THREE.Color.set() accepts hex directly,
+  //      so no conversion logic lives here.
+  //
+  // If you're adding a new color source (e.g. per-point intensity mapping),
+  // keep the hex contract — THREE.Color.set() is the consumer.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
@@ -136,9 +158,9 @@ export function PointCloud() {
       scratchObject.position.set(x, y, z);
       scratchObject.updateMatrix();
       mesh.setMatrixAt(i, scratchObject.matrix);
-      scratchColor.set(
-        classColors[points[i].className] || DEFAULT_CLASS_COLOR,
-      );
+      // Resolve color through the centralized resolver. See the COLOR
+      // RESOLUTION note above for why this isn't a static map lookup.
+      scratchColor.set(getClassColor(points[i].className));
       mesh.setColorAt(i, scratchColor);
     }
     mesh.count = points.length;

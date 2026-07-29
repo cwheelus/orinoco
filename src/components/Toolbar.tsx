@@ -31,7 +31,7 @@ const SCALING_MODES: { value: ScalingMode; label: string; hint: string }[] = [
     hint: "Type a ± bound per axis below.",
   },
 ];
-import { classColors, DEFAULT_CLASS_COLOR } from "../lib/classColors";
+import { getClassColor } from "../lib/classColors";
 import { OctantGizmo } from "./OctantGizmo";
 
 // Operator dropdown options for the numeric filters, in display order.
@@ -495,11 +495,15 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                           }`}
                           title={hidden ? "Show class" : "Hide class"}
                         >
+                          {/* Color resolved through getClassColor() rather than a
+                              static map — built-in classes keep their original
+                              colors, unknown classes get a deterministic generated
+                              hue. See lib/classColors.ts for the full precedence
+                              chain (override > built-in > generated). */}
                           <span
                             className="w-2.5 h-2.5 rounded-sm shrink-0"
                             style={{
-                              backgroundColor:
-                                classColors[className] || DEFAULT_CLASS_COLOR,
+                              backgroundColor: getClassColor(className),
                             }}
                           />
                           <span className="text-[10px] text-white/80 flex-1 text-left truncate">
@@ -700,7 +704,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                     max={30}
                     step={1}
                     value={tickDensity}
-                    onChange={(e) => setTickDensity(parseInt(e.target.value, 10))}
+                    onChange={(e) =>
+                      setTickDensity(parseInt(e.target.value, 10))
+                    }
                     className="w-full accent-blue-500 cursor-pointer"
                     aria-label="Tick density"
                   />
@@ -778,9 +784,8 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   Isolate
                 </p>
                 <p className="text-[10px] text-white/40">
-                  Click a cube to isolate that corner of the grid. Click
-                  inside the outline but off the cubes to show everything
-                  again.
+                  Click a cube to isolate that corner of the grid. Click inside
+                  the outline but off the cubes to show everything again.
                 </p>
                 {/* The gizmo mirrors the main view's rotation, so the cube
                     you click is the corner sitting in that same on-screen

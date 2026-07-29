@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react"; // ← CHANGED: added useMemo
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
@@ -14,7 +14,7 @@ import { CartesianGrid } from "./components/CartesianGrid";
 import { IsolationTransition } from "./components/IsolationTransition";
 import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
-import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
+import { getClassColor } from "./lib/classColors"; // ← CHANGED: already correct
 // The bundled sample dataset, imported as raw CSV text (Vite `?raw`). The
 // exact same parseCSV → setDataPoints path a user's uploaded CSV takes.
 import sampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
@@ -66,6 +66,9 @@ function App() {
   // Whether the grid box is currently shown — toggled from the
   // Toolbar's grid on/off icon.
   const gridVisible = useStore((state) => state.gridVisible);
+  // Full dataset — needed for the color legend so unknown classes get
+  // their deterministic generated color instead of being silently omitted.
+  const dataPoints = useStore((state) => state.dataPoints); // ← CHANGED: added
   // Replaces the active dataset (and its derived grid geometry/axis
   // labels, computed together — see useStore.ts's setDataPoints).
   const setDataPoints = useStore((state) => state.setDataPoints);
@@ -142,6 +145,16 @@ function App() {
       );
   }, [setDataPoints]);
 
+  // Unique class names from the loaded dataset, sorted for stable order.
+  // Derived from dataPoints (not a hardcoded map) so any class — built-in
+  // or unknown — gets a swatch in the legend. Memoized since it only
+  // changes when the dataset changes, not on every hover or camera move.
+  const classNames = useMemo(
+    // ← CHANGED: added useMemo block
+    () => Array.from(new Set(dataPoints.map((p) => p.className))).sort(),
+    [dataPoints],
+  );
+
   return (
     <div className="w-screen h-screen bg-slate-900 relative">
       {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
@@ -205,16 +218,15 @@ function App() {
                   <span className="text-white/40 text-[10px]">
                     Classification
                   </span>
-                  {/* Color driven by the shared classColors map (lib/classColors.ts)
-                      rather than a fixed set of Tailwind classes, since the real
-                      classes (normal/nss/qc/zt) use arbitrary hex values, not
-                      Tailwind's built-in palette. */}
+                  {/* Color resolved by getClassColor() (lib/classColors.ts)
+                      rather than a static map lookup. Built-in classes
+                      (normal/nss/qc/zt) keep their original colors;
+                      unknown classes get a deterministic generated hue
+                      from a stable hash — no white fallback. */}
                   <span
                     className="text-[10px] font-bold uppercase"
                     style={{
-                      color:
-                        classColors[hoveredPoint.className] ??
-                        DEFAULT_CLASS_COLOR,
+                      color: getClassColor(hoveredPoint.className), // ← CHANGED
                     }}
                   >
                     {hoveredPoint.className}
@@ -322,25 +334,31 @@ function App() {
             </div>
           </div>
 
-          {/* Color Key: generated directly from lib/classColors.ts (the same
-              map PointCloud.tsx uses for sphere colors), so the legend can
-              never drift out of sync with what's actually rendered. */}
+          {/* Color key: one swatch per unique class in the loaded dataset.
+              getClassColor() resolves built-in colors (normal/nss/qc/zt) and
+              generates deterministic hues for any unknown class — no white
+              fallback. Replaces the old static classColors map which silently
+              defaulted to white for classes outside its hardcoded four. */}
           <div className="bg-black/60 p-3 ring-1 ring-white/10 rounded">
             <div className="flex gap-4">
-              {Object.entries(classColors).map(([className, color]) => (
-                <div key={className} className="flex items-center gap-2">
-                  <div
-                    className="w-2 h-4 rounded-sm"
-                    style={{
-                      backgroundColor: color,
-                      boxShadow: `0 0 8px ${color}`,
-                    }}
-                  />
-                  <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
-                    {className}
-                  </span>
-                </div>
-              ))}
+              {classNames.map((className) => {
+                // ← CHANGED: uses derived classNames
+                const color = getClassColor(className);
+                return (
+                  <div key={className} className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-4 rounded-sm"
+                      style={{
+                        backgroundColor: color,
+                        boxShadow: `0 0 8px ${color}`,
+                      }}
+                    />
+                    <span className="text-[10px] uppercase font-bold text-white/80 tracking-widest">
+                      {className}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
