@@ -18,9 +18,12 @@
 export const PANEL = {
   // The icon strip and content pane's own background.
   bg: "bg-black/70 backdrop-blur-sm",
-  // The vertical line between icon strip and content pane, and the
-  // horizontal divider inside the icon strip.
+  // The vertical line separating the content pane from the icon strip
+  // (a border-l on the content pane).
   border: "border-white/10",
+  // The horizontal rule INSIDE the icon strip, between the action
+  // buttons above and the page tabs below — a separate element from
+  // `border` above, not the same line reused.
   divider: "bg-white/10",
 };
 
@@ -47,9 +50,10 @@ export const TEXT = {
   // needs to actually be legible. /45 restores compliance while
   // staying visually the dimmest tier relative to `muted` and `body`.
   faint: "text-white/45",
-  // Emphasized/value text — brighter, near-full-white, used where a
-  // concrete value or class name is shown (e.g. class list names,
-  // input values).
+  // Emphasized text — brighter, near-full-white. Used for the Data
+  // page's class-list names, the CSV-load error banner's message
+  // body, and the color-legend's class labels — content that should
+  // read clearly without being as bright as `onFilled`.
   emphasis: "text-white/80",
   // Fully opaque white — for text sitting directly on a filled/active
   // background where full contrast is needed. Not yet referenced in
