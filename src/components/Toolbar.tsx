@@ -9,9 +9,12 @@ import {
   EyeOff,
   Hand,
   MousePointer2,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import type { AxisKey, FilterOp, ScalingMode } from "../store/useStore";
+import { PANEL, TEXT, LINK, INPUT, HOVER, ICON_BUTTON } from "../lib/theme";
 
 // Scaling-mode options for the Grid page, in display order.
 const SCALING_MODES: { value: ScalingMode; label: string; hint: string }[] = [
@@ -58,7 +61,16 @@ const FILTER_OPS: { value: FilterOp; label: string }[] = [
  * LAYOUT: [viewport] | [resize border] | [icon strip, fixed] |
  * [content pane, resizable] | (screen's right edge)
  *
+ * STYLING: colors are pulled from ../lib/theme.ts's token objects
+ * (PANEL, TEXT, LINK, INPUT, HOVER, ICON_BUTTON) instead of inline
+ * Tailwind classes — see theme.ts's header comment for why. Only
+ * one-off classes that don't repeat elsewhere (layout, spacing,
+ * sizing) stay as raw Tailwind in this file.
+ *
  * ICON STRIP CONTENTS:
+ *  - Dark/light mode toggle (action, flips darkMode in the store —
+ *    see lib/theme.ts's light: variants and index.css's custom
+ *    variant declaration for how this actually recolors the app)
  *  - Load CSV (action)
  *  - Reset pivot to origin (action)
  *  - Grid on/off (action, toggles gridVisible in the store — fully
@@ -67,9 +79,9 @@ const FILTER_OPS: { value: FilterOp; label: string }[] = [
  *    orbit and pan via activeTool in the store — see CameraRig.tsx)
  *  - Data (page — class-visibility filtering, per-axis numeric
  *    filters, and point-size scaling. Fully functional; see #32)
- *  - Grid (page — per-axis tick label visibility, the experimental
- *    center Y axis toggle, and grid mode selection (Standard / Zero
- *    plane). Scaling modes remain a placeholder — see #25)
+ *  - Grid (page — per-axis tick label visibility, tick density,
+ *    and scaling mode selection)
+ *  - Isolate (page — the octant gizmo)
  */
 interface ToolbarProps {
   onFileSelected: (file: File) => void;
@@ -107,6 +119,10 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const setPointSizeScale = useStore((state) => state.setPointSizeScale);
   const toggleGrid = useStore((state) => state.toggleGrid);
+  // Dark/light mode + its toggle — drives the icon-strip's sun/moon
+  // button, the very first action in the strip (see below).
+  const darkMode = useStore((state) => state.darkMode);
+  const toggleDarkMode = useStore((state) => state.toggleDarkMode);
   const activeTool = useStore((state) => state.activeTool);
   const setActiveTool = useStore((state) => state.setActiveTool);
   const axisLabels = useStore((state) => state.axisLabels);
@@ -285,9 +301,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   // immediately rather than entering a persistent "selected" state.
   const iconButtonClass = (active: boolean) =>
     `w-8 h-8 flex items-center justify-center rounded transition-colors ${
-      active
-        ? "bg-blue-500/40 text-white"
-        : "text-white/50 hover:bg-white/10 hover:text-white"
+      active ? ICON_BUTTON.active : ICON_BUTTON.idle
     }`;
 
   return (
@@ -322,7 +336,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           pinned next to the viewport while only the content area
           resizes. */}
       <div
-        className="flex flex-col items-center gap-1 p-1.5 pt-4 bg-black/70 backdrop-blur-sm"
+        className={`flex flex-col items-center gap-1 p-1.5 pt-4 ${PANEL.bg}`}
         style={{ width: ICON_STRIP_WIDTH }}
       >
         {/* Hidden native file input, triggered by the visible
@@ -336,6 +350,21 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           onChange={handleFileChange}
           className="hidden"
         />
+
+        {/* ACTION: toggle dark/light mode. Icon reflects the CURRENT
+            mode (Moon while dark, Sun while light) — same convention
+            as Eye/EyeOff and Hand/MousePointer2 below. Lit (active
+            styling) specifically while in LIGHT mode, since dark is
+            the app's default — mirrors how the pan tool only lights
+            up for its non-default state, rather than lighting up for
+            whichever boolean happens to be true. */}
+        <button
+          onClick={toggleDarkMode}
+          className={iconButtonClass(!darkMode)}
+          title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {darkMode ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
 
         {/* ACTION: load CSV */}
         <button
@@ -387,7 +416,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           )}
         </button>
 
-        <div className="w-full h-[1px] bg-white/10 my-1" />
+        <div className={`w-full h-[1px] my-1 ${PANEL.divider}`} />
 
         {/* PAGE: Data. Active state checks BOTH activePage === "data"
             AND contentWidth > 0 — not just activePage alone — because
@@ -437,7 +466,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
           open/closed instead of the content just popping in and out
           instantly. */}
       <div
-        className={`bg-black/70 backdrop-blur-sm border-l border-white/10 overflow-hidden ${
+        className={`${PANEL.bg} border-l ${PANEL.border} overflow-hidden ${
           isDragging ? "" : "transition-[width] duration-150"
         }`}
         style={{ width: contentWidth }}
@@ -456,12 +485,10 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                 covering large-dataset rendering work (e.g. #26). */}
             {activePage === "data" && (
               <>
-                <p className="text-[10px] font-bold text-blue-400 uppercase">
-                  Data
-                </p>
+                <p className={TEXT.heading}>Data</p>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-[10px] font-bold text-white/70">
+                    <p className={`text-[10px] font-bold ${TEXT.body}`}>
                       Filters
                     </p>
                     {(hiddenClasses.length > 0 ||
@@ -470,7 +497,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                       numericFilters.z.op !== "off") && (
                       <button
                         onClick={clearFilters}
-                        className="text-[9px] text-blue-400 hover:text-blue-300 transition-colors"
+                        className={`text-[9px] ${LINK.base}`}
                         title="Clear all filters"
                       >
                         Clear
@@ -480,9 +507,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
 
                   {/* Class visibility: one toggle per class present in the
                       dataset. Clicking hides/shows that class's points. */}
-                  <p className="text-[9px] uppercase tracking-wide text-white/40 mb-1">
-                    Classes
-                  </p>
+                  <p className={`${TEXT.subtle} mb-1`}>Classes</p>
                   <div className="space-y-0.5 mb-2">
                     {availableClasses.map((className) => {
                       const hidden = hiddenClasses.includes(className);
@@ -490,7 +515,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                         <button
                           key={className}
                           onClick={() => toggleClassHidden(className)}
-                          className={`w-full flex items-center gap-2 px-1 py-0.5 rounded hover:bg-white/5 transition-colors ${
+                          className={`w-full flex items-center gap-2 px-1 py-0.5 rounded ${HOVER.subtle} transition-colors ${
                             hidden ? "opacity-40" : ""
                           }`}
                           title={hidden ? "Show class" : "Hide class"}
@@ -502,13 +527,15 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                                 classColors[className] || DEFAULT_CLASS_COLOR,
                             }}
                           />
-                          <span className="text-[10px] text-white/80 flex-1 text-left truncate">
+                          <span
+                            className={`text-[10px] ${TEXT.emphasis} flex-1 text-left truncate`}
+                          >
                             {className}
                           </span>
                           {hidden ? (
-                            <EyeOff size={11} className="text-white/40" />
+                            <EyeOff size={11} className={TEXT.muted} />
                           ) : (
-                            <Eye size={11} className="text-white/60" />
+                            <Eye size={11} className={TEXT.iconDefault} />
                           )}
                         </button>
                       );
@@ -518,16 +545,14 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   {/* Numeric filters: one operator dropdown + value box
                       per axis, comparing the point's RAW value on that
                       axis (matching the axis tick labels). */}
-                  <p className="text-[9px] uppercase tracking-wide text-white/40 mb-1">
-                    Value
-                  </p>
+                  <p className={`${TEXT.subtle} mb-1`}>Value</p>
                   <div className="space-y-1">
                     {(["x", "y", "z"] as AxisKey[]).map((axis) => {
                       const f = numericFilters[axis];
                       return (
                         <div key={axis} className="flex items-center gap-1">
                           <span
-                            className="text-[9px] font-mono text-white/50 w-14 truncate shrink-0"
+                            className={`text-[9px] font-mono ${TEXT.muted} w-14 truncate shrink-0`}
                             title={axisLabels[axis]}
                           >
                             {axisLabels[axis]}
@@ -540,14 +565,14 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                                 op: e.target.value as FilterOp,
                               })
                             }
-                            className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 outline-none focus:bg-white/20 shrink-0"
+                            className={`${INPUT.base} text-[10px] rounded px-1 py-0.5 shrink-0`}
                             aria-label={`${axisLabels[axis]} operator`}
                           >
                             {FILTER_OPS.map((o) => (
                               <option
                                 key={o.value}
                                 value={o.value}
-                                className="bg-slate-800"
+                                className={INPUT.optionBg}
                               >
                                 {o.label}
                               </option>
@@ -568,10 +593,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                                     value: e.target.value,
                                   })
                                 }
-                                className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                                className={`${INPUT.base} text-[10px] rounded px-1 py-0.5 w-full min-w-0 font-mono`}
                                 aria-label={`${axisLabels[axis]} min`}
                               />
-                              <span className="text-white/30 text-[9px] shrink-0">
+                              <span
+                                className={`${TEXT.faint} text-[9px] shrink-0`}
+                              >
                                 –
                               </span>
                               <input
@@ -584,7 +611,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                                     value2: e.target.value,
                                   })
                                 }
-                                className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                                className={`${INPUT.base} text-[10px] rounded px-1 py-0.5 w-full min-w-0 font-mono`}
                                 aria-label={`${axisLabels[axis]} max`}
                               />
                             </div>
@@ -600,7 +627,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                                   value: e.target.value,
                                 })
                               }
-                              className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 disabled:opacity-40 font-mono"
+                              className={`${INPUT.base} text-[10px] rounded px-1 py-0.5 w-full min-w-0 disabled:opacity-40 font-mono`}
                               aria-label={`${axisLabels[axis]} value`}
                             />
                           )}
@@ -611,10 +638,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-[10px] font-bold text-white/70">
+                    <p className={`text-[10px] font-bold ${TEXT.body}`}>
                       Point size
                     </p>
-                    <span className="text-[10px] font-mono text-white/50 tabular-nums">
+                    <span
+                      className={`text-[10px] font-mono ${TEXT.muted} tabular-nums`}
+                    >
                       {pointSizeScale.toFixed(2)}×
                     </span>
                   </div>
@@ -634,7 +663,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                     className="w-full accent-blue-500 cursor-pointer"
                     aria-label="Point size"
                   />
-                  <div className="flex justify-between text-[9px] text-white/30 mt-0.5">
+                  <div
+                    className={`flex justify-between text-[9px] ${TEXT.faint} mt-0.5`}
+                  >
                     <span>Smaller</span>
                     <button
                       onClick={() => setPointSizeScale(1)}
@@ -650,12 +681,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
             )}
             {activePage === "grid" && (
               <>
-                <p className="text-[10px] font-bold text-blue-400 uppercase">
-                  Grid
-                </p>
+                <p className={TEXT.heading}>Grid</p>
                 {/* Grid visibility — moved here from the icon strip so all
                     grid settings live together on this page. */}
-                <label className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer">
+                <label
+                  className={`flex items-center gap-2 text-[10px] ${TEXT.body} cursor-pointer`}
+                >
                   <input
                     type="checkbox"
                     checked={gridVisible}
@@ -665,13 +696,13 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   Show grid
                 </label>
                 <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-1">
+                  <p className={`text-[10px] font-bold ${TEXT.body} mb-1`}>
                     Tick labels
                   </p>
                   {(["x", "y", "z"] as const).map((axis) => (
                     <label
                       key={axis}
-                      className="flex items-center gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
+                      className={`flex items-center gap-2 text-[10px] ${TEXT.body} cursor-pointer mb-1`}
                     >
                       <input
                         type="checkbox"
@@ -685,10 +716,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-[10px] font-bold text-white/70">
+                    <p className={`text-[10px] font-bold ${TEXT.body}`}>
                       Tick density
                     </p>
-                    <span className="text-[10px] font-mono text-white/50 tabular-nums">
+                    <span
+                      className={`text-[10px] font-mono ${TEXT.muted} tabular-nums`}
+                    >
                       {tickDensity}/side
                     </span>
                   </div>
@@ -700,23 +733,27 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                     max={30}
                     step={1}
                     value={tickDensity}
-                    onChange={(e) => setTickDensity(parseInt(e.target.value, 10))}
+                    onChange={(e) =>
+                      setTickDensity(parseInt(e.target.value, 10))
+                    }
                     className="w-full accent-blue-500 cursor-pointer"
                     aria-label="Tick density"
                   />
-                  <div className="flex justify-between text-[9px] text-white/30 mt-0.5">
+                  <div
+                    className={`flex justify-between text-[9px] ${TEXT.faint} mt-0.5`}
+                  >
                     <span>Coarse</span>
                     <span>Fine</span>
                   </div>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-white/70 mb-1">
+                  <p className={`text-[10px] font-bold ${TEXT.body} mb-1`}>
                     Scaling
                   </p>
                   {SCALING_MODES.map((m) => (
                     <label
                       key={m.value}
-                      className="flex items-start gap-2 text-[10px] text-white/70 cursor-pointer mb-1"
+                      className={`flex items-start gap-2 text-[10px] ${TEXT.body} cursor-pointer mb-1`}
                     >
                       <input
                         type="radio"
@@ -727,7 +764,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                       />
                       <span>
                         {m.label}
-                        <span className="block text-[9px] text-white/35">
+                        <span className={`block text-[9px] ${TEXT.faint}`}>
                           {m.hint}
                         </span>
                       </span>
@@ -742,12 +779,12 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                       {(["x", "y", "z"] as AxisKey[]).map((axis) => (
                         <div key={axis} className="flex items-center gap-1">
                           <span
-                            className="text-[9px] font-mono text-white/50 w-14 truncate shrink-0"
+                            className={`text-[9px] font-mono ${TEXT.muted} w-14 truncate shrink-0`}
                             title={axisLabels[axis]}
                           >
                             {axisLabels[axis]}
                           </span>
-                          <span className="text-[9px] text-white/30 shrink-0">
+                          <span className={`text-[9px] ${TEXT.faint} shrink-0`}>
                             ±
                           </span>
                           <input
@@ -762,7 +799,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                             onChange={(e) =>
                               setCustomBound(axis, e.target.value)
                             }
-                            className="bg-white/10 text-white text-[10px] rounded px-1 py-0.5 w-full min-w-0 outline-none focus:bg-white/20 font-mono"
+                            className={`${INPUT.base} text-[10px] rounded px-1 py-0.5 w-full min-w-0 font-mono`}
                             aria-label={`${axisLabels[axis]} bound`}
                           />
                         </div>
@@ -774,13 +811,10 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
             )}
             {activePage === "isolate" && (
               <>
-                <p className="text-[10px] font-bold text-blue-400 uppercase">
-                  Isolate
-                </p>
-                <p className="text-[10px] text-white/40">
-                  Click a cube to isolate that corner of the grid. Click
-                  inside the outline but off the cubes to show everything
-                  again.
+                <p className={TEXT.heading}>Isolate</p>
+                <p className={`text-[10px] ${TEXT.muted}`}>
+                  Click a cube to isolate that corner of the grid. Click inside
+                  the outline but off the cubes to show everything again.
                 </p>
                 {/* The gizmo mirrors the main view's rotation, so the cube
                     you click is the corner sitting in that same on-screen
@@ -791,7 +825,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                       initial — real column names often share a first
                       letter (invel_pps / invel_bpp both give "I"), which
                       made an abbreviated form ambiguous. */}
-                  <div className="text-[10px] text-white/50 font-mono min-w-0">
+                  <div
+                    className={`text-[10px] ${TEXT.muted} font-mono min-w-0`}
+                  >
                     {isolatedOctant ? (
                       ([" x", "y", "z"] as const).map((_, i) => {
                         const label = [
@@ -812,7 +848,7 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                   {isolatedOctant && (
                     <button
                       onClick={() => setIsolatedOctant(null)}
-                      className="text-[9px] text-blue-400 hover:text-blue-300 transition-colors shrink-0"
+                      className={`text-[9px] ${LINK.base} shrink-0`}
                       title="Show the full grid"
                     >
                       Reset
