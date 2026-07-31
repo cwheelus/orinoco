@@ -120,6 +120,10 @@ function App() {
   // Full dataset — needed for the color legend so unknown classes get
   // their deterministic generated color instead of being silently omitted.
   const dataPoints = useStore((state) => state.dataPoints);
+  // Analyst's manual color picks for classes — passed to getClassColor()
+  // as the highest-precedence source. Empty by default until the color
+  // picker UI (Phase 4) populates it.
+  const classColorOverrides = useStore((state) => state.classColorOverrides);
   // Whether the interface is in dark or light mode — toggled from the
   // Toolbar's sun/moon icon. Drives the "light" class applied to the
   // root div below, which activates every theme.ts token's light:
@@ -296,15 +300,13 @@ function App() {
                   <span className={`${TEXT.faint} text-[10px]`}>
                     Classification
                   </span>
-                  {/* Color resolved by getClassColor() (lib/classColors.ts)
-                      rather than a static map lookup. Built-in classes
-                      (normal/nss/qc/zt) keep their original colors;
-                      unknown classes get a deterministic generated hue
-                      from a stable hash — no white fallback. */}
                   <span
                     className="text-[10px] font-bold uppercase"
                     style={{
-                      color: getClassColor(hoveredPoint.className), // ← CHANGED
+                      color: getClassColor(
+                        hoveredPoint.className,
+                        classColorOverrides,
+                      ),
                     }}
                   >
                     {hoveredPoint.className}
@@ -408,7 +410,7 @@ function App() {
           <div className={`${PANEL_APP.legend} p-3`}>
             <div className="flex gap-4">
               {classNames.map((className) => {
-                const color = getClassColor(className);
+                const color = getClassColor(className, classColorOverrides);
                 return (
                   <div key={className} className="flex items-center gap-2">
                     <div

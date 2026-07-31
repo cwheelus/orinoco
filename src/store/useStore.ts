@@ -164,6 +164,11 @@ interface VisualizerState {
   // The distinct class names in the current dataset (first-seen order).
   // Drives the Data page's class-visibility toggle list.
   availableClasses: string[];
+  // Analyst's manual color overrides per class name. Keys are class names,
+  // values are "#rrggbb" hex strings. Empty by default; populated by the
+  // color-picker UI (Phase 4). getClassColor() reads this map as the
+  // highest-precedence source — see lib/classColors.ts.
+  classColorOverrides: Record<string, string>;
   // Class names the analyst has hidden via the Data page. Points whose
   // className is in here are filtered out of the render (see
   // PointCloud.tsx). Stored as the HIDDEN set (rather than visible) so
@@ -239,6 +244,11 @@ interface VisualizerState {
   setNumericFilter: (axis: AxisKey, filter: NumericFilter) => void;
   // Clears all class and numeric filters back to "show everything".
   clearFilters: () => void;
+  // Sets a manual color override for one class. Called from the color
+  // picker UI (Phase 4). Passing an empty string removes the override.
+  setClassColor: (className: string, color: string) => void;
+  // Clears all manual color overrides back to generated/built-in colors.
+  resetClassColors: () => void;
 }
 
 export const useStore = create<VisualizerState>((set) => ({
@@ -270,6 +280,7 @@ export const useStore = create<VisualizerState>((set) => ({
   // Filters start fully open — every class shown, no numeric filtering.
   // Empty until the sample CSV loads on mount (setDataPoints fills it).
   availableClasses: [],
+  classColorOverrides: {},
   hiddenClasses: [],
   numericFilters: NO_NUMERIC_FILTERS,
   // All axes' tick marks/numbers visible by default. Unlike
@@ -348,10 +359,18 @@ export const useStore = create<VisualizerState>((set) => ({
       const customBounds = { ...state.customBounds, [axis]: value };
       return {
         customBounds,
-        // Recompute live so typing a bound reflects immediately. Only
-        // actually changes the render in "custom" mode; harmless in the
-        // auto modes (custom bounds are ignored there).
         gridSpace: gridSpaceFor({ ...state, customBounds }),
       };
     }),
+  setClassColor: (className, color) =>
+    set((state) => ({
+      classColorOverrides: color
+        ? { ...state.classColorOverrides, [className]: color }
+        : Object.fromEntries(
+            Object.entries(state.classColorOverrides).filter(
+              ([k]) => k !== className,
+            ),
+          ),
+    })),
+  resetClassColors: () => set({ classColorOverrides: {} }),
 }));

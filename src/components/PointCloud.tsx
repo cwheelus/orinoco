@@ -30,18 +30,23 @@ function clamp(v: number, lo: number, hi: number) {
 // filter" — the point passes on that axis.
 function passesNumeric(value: number, f: NumericFilter): boolean {
   if (f.op === "off") return true;
+
   // Inclusive range. Either bound left blank/invalid is simply ignored,
   // so a "between" with only one box filled behaves as a single-sided
   // bound (>= min, or <= max) rather than filtering nothing.
   if (f.op === "between") {
     const lo = parseFloat(f.value);
     const hi = parseFloat(f.value2);
+
     if (Number.isFinite(lo) && value < lo) return false;
     if (Number.isFinite(hi) && value > hi) return false;
+
     return true;
   }
+
   const threshold = parseFloat(f.value);
   if (!Number.isFinite(threshold)) return true;
+
   switch (f.op) {
     case "gt":
       return value > threshold;
@@ -79,6 +84,11 @@ export function PointCloud() {
   const numericFilters = useStore((state) => state.numericFilters);
   const isolatedOctant = useStore((state) => state.isolatedOctant);
 
+  // Highest-precedence manual class color overrides.
+  // Analyst-defined color overrides. Passed to getClassColor() so manual
+  // color changes propagate to the rendered point cloud.
+  const classColorOverrides = useStore((state) => state.classColorOverrides);
+
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const hoveredIdRef = useRef<number | null>(null);
 
@@ -86,20 +96,24 @@ export function PointCloud() {
   // don't resize as you filter), then the user's slider multiplier.
   const pointRadius = useMemo(() => {
     const n = Math.max(1, dataPoints.length);
+
     const autoRadius = clamp(
       BASE_RADIUS * Math.sqrt(REFERENCE_COUNT / n),
       AUTO_MIN_RADIUS,
       AUTO_MAX_RADIUS,
     );
+
     return clamp(autoRadius * pointSizeScale, HARD_MIN_RADIUS, HARD_MAX_RADIUS);
   }, [dataPoints.length, pointSizeScale]);
 
   // Render-space position of every point, computed once per dataset.
   const positions = useMemo(() => {
     const out = new Array<[number, number, number]>(dataPoints.length);
+
     for (let i = 0; i < dataPoints.length; i++) {
       out[i] = toRenderSpace(dataPoints[i]);
     }
+
     return out;
   }, [dataPoints, toRenderSpace]);
 
@@ -111,17 +125,22 @@ export function PointCloud() {
     const hidden = new Set(hiddenClasses);
     const points: DataPoint[] = [];
     const pts: [number, number, number][] = [];
+
     for (let i = 0; i < dataPoints.length; i++) {
       const p = dataPoints[i];
+
       if (hidden.has(p.className)) continue;
       if (!passesNumeric(p.x, numericFilters.x)) continue;
       if (!passesNumeric(p.y, numericFilters.y)) continue;
       if (!passesNumeric(p.z, numericFilters.z)) continue;
+
       // Octant isolation hides everything outside the selected corner.
       if (!inOctant(p, isolatedOctant)) continue;
+
       points.push(p);
       pts.push(positions[i]);
     }
+
     return { points, positions: pts };
   }, [dataPoints, positions, hiddenClasses, numericFilters, isolatedOctant]);
 
@@ -129,46 +148,49 @@ export function PointCloud() {
   // subset, then cap mesh.count so only those instances draw/raycast.
   //
   // COLOR RESOLUTION:
-  // Colors come from getClassColor() (lib/classColors.ts), NOT from a
-  // static map. This gives us three things the old static map couldn't:
+  // Colors come from getClassColor() rather than a static lookup table.
   //
-  //   1. Deterministic fallback colors for unknown classes — instead of
-  //      defaulting to white when a class isn't in a hardcoded map, we
-  //      hash the class name to a stable hue. Same name always gets the
-  //      same color, across reloads, across datasets.
+  //   1. Unknown classes receive deterministic generated colors.
   //
-  //   2. Future manual overrides — getClassColor() already accepts an
-  //      overrides argument (second param). When the color-picker UI lands
-  //      (Phase 4 of #43), pass store.classColorOverrides here and the
-  //      instance colors will update automatically — no changes needed
-  //      in this file.
+  //   2. Manual overrides are resolved centrally by getClassColor().
+  //      Updating classColorOverrides immediately updates the
+  //      rendered points.
   //
-  //   3. Hex contract — getClassColor() ALWAYS returns "#rrggbb" hex,
-  //      never HSL or named colors. THREE.Color.set() accepts hex directly,
-  //      so no conversion logic lives here.
+  //   3. getClassColor() always returns "#rrggbb" hex, which THREE.Color
+  //      accepts directly.
   //
-  // If you're adding a new color source (e.g. per-point intensity mapping),
-  // keep the hex contract — THREE.Color.set() is the consumer.
+  // If you add another color source (for example, intensity or heat-map
+  // coloring), keep PointCloud a consumer of the centralized resolver.
+  // Color policy belongs in lib/classColors.ts.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
+
     const { points, positions: vpos } = visible;
+
     for (let i = 0; i < points.length; i++) {
       const [x, y, z] = vpos[i];
+
       scratchObject.position.set(x, y, z);
       scratchObject.updateMatrix();
       mesh.setMatrixAt(i, scratchObject.matrix);
-      // Resolve color through the centralized resolver. See the COLOR
-      // RESOLUTION note above for why this isn't a static map lookup.
-      scratchColor.set(getClassColor(points[i].className));
+
+      // Resolve this instance's display color through the centralized resolver.
+      scratchColor.set(getClassColor(points[i].className, classColorOverrides));
+
       mesh.setColorAt(i, scratchColor);
     }
+
     mesh.count = points.length;
     mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    // computeBoundingSphere uses mesh.count, so set count first (above).
+
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true;
+    }
+
+    // Bounding volume depends on the current visible instance count.
     mesh.computeBoundingSphere();
-  }, [visible]);
+  }, [visible, classColorOverrides]);
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();

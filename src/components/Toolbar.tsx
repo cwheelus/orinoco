@@ -130,6 +130,9 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
   const hiddenClasses = useStore((state) => state.hiddenClasses);
   const numericFilters = useStore((state) => state.numericFilters);
   const toggleClassHidden = useStore((state) => state.toggleClassHidden);
+  // Analyst-picked color overrides — passed into getClassColor() below
+  // so the Data page's class swatches reflect manual color changes.
+  const classColorOverrides = useStore((state) => state.classColorOverrides);
   const setNumericFilter = useStore((state) => state.setNumericFilter);
   const clearFilters = useStore((state) => state.clearFilters);
   // Which axes' tick marks/numbers are currently hidden, and the
@@ -528,7 +531,10 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
                           <span
                             className="w-2.5 h-2.5 rounded-sm shrink-0"
                             style={{
-                              backgroundColor: getClassColor(className),
+                              backgroundColor: getClassColor(
+                                className,
+                                classColorOverrides,
+                              ),
                             }}
                           />
                           <span
