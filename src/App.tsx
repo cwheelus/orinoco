@@ -14,6 +14,7 @@ import { CartesianGrid } from "./components/CartesianGrid";
 import { IsolationTransition } from "./components/IsolationTransition";
 import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
+import { parseColorsCSV } from "./lib/parseColorsCSV";
 import { getClassColor } from "./lib/classColors";
 import { SURFACE, PANEL_APP, TEXT, ERROR, KBD } from "./lib/theme";
 
@@ -124,6 +125,11 @@ function App() {
   // as the highest-precedence source. Empty by default until the color
   // picker UI (Phase 4) populates it.
   const classColorOverrides = useStore((state) => state.classColorOverrides);
+  // Setter for the colors.csv loader below — replaces the whole
+  // override map at once rather than looping setClassColor per row.
+  const setClassColorOverrides = useStore(
+    (state) => state.setClassColorOverrides,
+  );
   // Whether the interface is in dark or light mode — toggled from the
   // Toolbar's sun/moon icon. Drives the "light" class applied to the
   // root div below, which activates every theme.ts token's light:
@@ -185,6 +191,28 @@ function App() {
     }
   };
 
+  // Loads a colors.csv (className,color) to override the deterministic
+  // generated colors — see lib/parseColorsCSV.ts and lib/classColors.ts
+  // for the precedence chain (override > built-in > generated). Per
+  // Charles's original spec: colors are "set and changed from that
+  // file," not via an in-app picker.
+  const handleColorFileSelected = async (file: File) => {
+    setLoadError(null);
+    try {
+      const { overrides, skippedRows } = await parseColorsCSV(file);
+      setClassColorOverrides(overrides);
+      if (skippedRows.length > 0) {
+        setLoadError(
+          `Color file loaded with ${skippedRows.length} row(s) skipped (missing or invalid): rows ${skippedRows.join(", ")}`,
+        );
+      }
+    } catch (err) {
+      setLoadError(
+        err instanceof Error ? err.message : "Failed to load color file.",
+      );
+    }
+  };
+
   // Load the bundled sample dataset once on mount, through the same
   // parseCSV → setDataPoints pipeline as a user upload — so it's the
   // initial dataset without any separate hardcoded-data code path. Wrap
@@ -222,12 +250,16 @@ function App() {
         darkMode ? "" : "light"
       }`}
     >
-      {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
-          Rendered as its own fixed-position panel — NOT nested inside
-          the HUD's flex layout below — since its screen position is
-          self-managed (docked + resizable, see Toolbar.tsx) rather
-          than dictated by a parent flex/grid container. */}
-      <Toolbar onFileSelected={handleFileSelected} />
+      {/* Toolbar: data CSV loading, color-mapping CSV loading, origin
+          reset, and Data/Grid/Isolate pages. Rendered as its own
+          fixed-position panel — NOT nested inside the HUD's flex
+          layout below — since its screen position is self-managed
+          (docked + resizable, see Toolbar.tsx) rather than dictated
+          by a parent flex/grid container. */}
+      <Toolbar
+        onFileSelected={handleFileSelected}
+        onColorFileSelected={handleColorFileSelected}
+      />
 
       {/* 
           1. HUD OVERLAY (2D)

@@ -249,6 +249,10 @@ interface VisualizerState {
   setClassColor: (className: string, color: string) => void;
   // Clears all manual color overrides back to generated/built-in colors.
   resetClassColors: () => void;
+  // Replaces the entire override map at once — used when loading a
+  // colors.csv file (see lib/parseColorsCSV.ts), so an N-row file
+  // becomes one store update instead of N calls to setClassColor.
+  setClassColorOverrides: (overrides: Record<string, string>) => void;
 }
 
 export const useStore = create<VisualizerState>((set) => ({
@@ -373,4 +377,5 @@ export const useStore = create<VisualizerState>((set) => ({
           ),
     })),
   resetClassColors: () => set({ classColorOverrides: {} }),
+  setClassColorOverrides: (classColorOverrides) => set({ classColorOverrides }),
 }));

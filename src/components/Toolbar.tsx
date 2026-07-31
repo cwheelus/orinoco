@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback } from "react";
 import {
   Paperclip,
+  Palette,
   Database,
   Grid3x3,
   Box,
@@ -72,6 +73,9 @@ const FILTER_OPS: { value: FilterOp; label: string }[] = [
  *    see lib/theme.ts's light: variants and index.css's custom
  *    variant declaration for how this actually recolors the app)
  *  - Load CSV (action)
+ *  - Load color mapping (action, loads a colors.csv to override
+ *    deterministic generated colors — see lib/parseColorsCSV.ts and
+ *    lib/classColors.ts's precedence chain)
  *  - Reset pivot to origin (action)
  *  - Grid on/off (action, toggles gridVisible in the store — fully
  *    functional now, wired to CartesianGrid's render in App.tsx)
@@ -85,6 +89,7 @@ const FILTER_OPS: { value: FilterOp; label: string }[] = [
  */
 interface ToolbarProps {
   onFileSelected: (file: File) => void;
+  onColorFileSelected: (file: File) => void;
 }
 
 type PageKey = "data" | "grid" | "isolate";
@@ -112,7 +117,7 @@ const MAX_OPEN_WIDTH = 400;
 // there's no crude snap-shut mid-drag.
 const CLOSE_THRESHOLD = 60;
 
-export function Toolbar({ onFileSelected }: ToolbarProps) {
+export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const setPivot = useStore((state) => state.setPivot);
   const gridVisible = useStore((state) => state.gridVisible);
@@ -193,6 +198,18 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
     const file = e.target.files?.[0];
     if (file) onFileSelected(file);
     // Reset value so selecting the SAME file again still fires onChange.
+    e.target.value = "";
+  };
+
+  // Colors-file input: a small two-column CSV (className,color) that
+  // overrides the deterministic generated colors, per Charles's
+  // original spec — "set and changed from that file." Separate ref
+  // and handler from the main data loader, since they're two distinct
+  // file types with two distinct parsers.
+  const colorInputRef = useRef<HTMLInputElement>(null);
+  const handleColorFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onColorFileSelected(file);
     e.target.value = "";
   };
 
@@ -377,7 +394,25 @@ export function Toolbar({ onFileSelected }: ToolbarProps) {
         >
           <Paperclip size={16} />
         </button>
-
+        {/* Hidden native file input for the colors file, mirroring
+            the data-CSV input above. */}
+        <input
+          ref={colorInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleColorFileChange}
+          className="hidden"
+        />
+        {/* ACTION: load a colors.csv (className,color) to override
+            the deterministic generated colors. See lib/classColors.ts
+            for the override precedence. */}
+        <button
+          onClick={() => colorInputRef.current?.click()}
+          className={iconButtonClass(false)}
+          title="Load color mapping (colors.csv)"
+        >
+          <Palette size={16} />
+        </button>
         {/* ACTION: reset pivot to origin. Consolidated here from the
             old inline "Reset Pivot" button that used to live in
             App.tsx's bottom HUD control guide — moved to keep all
