@@ -43,9 +43,19 @@ export interface ColumnMapping {
   z: string;
 }
 
+export interface DatasetSchema {
+  headers: string[];
+  numericColumns: string[];
+  textColumns: string[];
+  uidColumn: string;
+  classColumn: string;
+  metadataColumns: string[];
+}
+
 export interface ParseResult {
   points: DataPoint[];
   mapping: ColumnMapping;
+  schema: DatasetSchema;
   // Row numbers (matching what a user would see in a spreadsheet,
   // 1-indexed + header row) skipped due to non-numeric values in a
   // column that was otherwise classified as numeric.
@@ -162,8 +172,24 @@ export function parseCSV(file: File): Promise<ParseResult> {
         const uidColumn = pickUidColumn(text, rows);
         const classColumn = text.find((c) => c !== uidColumn) ?? uidColumn;
 
-        const [xCol, yCol, zCol] = numeric;
+        // Built here — after both the numeric and text-column checks
+        // above have already passed — so every field is a real,
+        // validated value, never a placeholder. The error above
+        // ("needs manual column selection, which isn't supported
+        // yet") names a real future capability; this schema is the
+        // extension point for it, but only once construction is safe.
+        const schema: DatasetSchema = {
+          headers,
+          numericColumns: numeric,
+          textColumns: text,
+          uidColumn,
+          classColumn,
+          metadataColumns: text.filter(
+            (c) => c !== uidColumn && c !== classColumn,
+          ),
+        };
 
+        const [xCol, yCol, zCol] = numeric;
         const mapping: ColumnMapping = {
           uid: uidColumn,
           className: classColumn,
@@ -206,7 +232,7 @@ export function parseCSV(file: File): Promise<ParseResult> {
           return;
         }
 
-        resolve({ points, mapping, skippedRows });
+        resolve({ points, mapping, schema, skippedRows });
       },
       error: (error) => reject(error),
     });
