@@ -142,15 +142,19 @@ export function parseCSV(file: File): Promise<ParseResult> {
 
         const { numeric, text } = classifyColumns(headers, rows);
 
-        // Need exactly 3 numeric columns to plot as x/y/z, per the
-        // spec's 3D constraint (a 3D plot can't show more or fewer
-        // axes). More or fewer than 3 means we can't confidently
-        // auto-map without the user picking which 3 to use.
-        if (numeric.length !== 3) {
+        // Need at least 3 numeric columns to plot as x/y/z, per the
+        // spec's 3D constraint (a 3D plot needs exactly 3 axes).
+        // Fewer than 3 means there's nothing to auto-map — no amount
+        // of column selection fixes a CSV that doesn't have 3 numeric
+        // columns. More than 3 is fine: the first 3 in header order
+        // become x/y/z (see the comment near the destructuring below);
+        // the rest are recorded in schema.numericColumns but not
+        // plotted. No column-picker UI — a deliberate default to keep
+        // the interface minimal.
+        if (numeric.length < 3) {
           reject(
             new Error(
-              `Expected exactly 3 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}). ` +
-                `This CSV needs manual column selection, which isn't supported yet.`,
+              `Expected at least 3 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}).`,
             ),
           );
           return;
