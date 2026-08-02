@@ -40,7 +40,10 @@ export interface ColumnMapping {
   className: string;
   x: string;
   y: string;
-  z: string;
+  // Absent for a 2D dataset (2 numeric columns) — there is no Z
+  // column in the CSV to name. See DatasetSchema.dimension for the
+  // authoritative signal of which case a given dataset is.
+  z?: string;
 }
 
 export interface DatasetSchema {
@@ -50,12 +53,24 @@ export interface DatasetSchema {
   uidColumn: string;
   classColumn: string;
   metadataColumns: string[];
+  // 2 for a flat-plane dataset (2 numeric columns; Z synthesized as a
+  // constant 0), 3 for a normal 3D dataset. Read by Axes.tsx to decide
+  // whether to render the Z axis at all.
+  dimension: 2 | 3;
 }
 
 export interface ParseResult {
   points: DataPoint[];
   mapping: ColumnMapping;
   schema: DatasetSchema;
+  // Non-numeric field values per point, keyed by uid — kept parallel
+  // to `points` rather than merged into DataPoint, since DataPoint is
+  // a lean rendering object read constantly by PointCloud.tsx. Only
+  // covers schema.metadataColumns (text columns beyond uid/class).
+  // If a dataset contains duplicate uid values, later rows will
+  // overwrite earlier metadata entries for that uid — datasets are
+  // expected to provide unique identifiers.
+  metadata: Record<string, Record<string, string>>;
   // Row numbers (matching what a user would see in a spreadsheet,
   // 1-indexed + header row) skipped due to non-numeric values in a
   // column that was otherwise classified as numeric.
@@ -151,10 +166,10 @@ export function parseCSV(file: File): Promise<ParseResult> {
         // the rest are recorded in schema.numericColumns but not
         // plotted. No column-picker UI — a deliberate default to keep
         // the interface minimal.
-        if (numeric.length < 3) {
+        if (numeric.length < 2) {
           reject(
             new Error(
-              `Expected at least 3 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}).`,
+              `Expected at least 2 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}).`,
             ),
           );
           return;
@@ -182,6 +197,10 @@ export function parseCSV(file: File): Promise<ParseResult> {
         // ("needs manual column selection, which isn't supported
         // yet") names a real future capability; this schema is the
         // extension point for it, but only once construction is safe.
+
+        // Exactly two numeric columns represent a 2D dataset.
+        // Z is synthesized as 0 for every point.
+        const is2D = numeric.length === 2;
         const schema: DatasetSchema = {
           headers,
           numericColumns: numeric,
@@ -191,8 +210,8 @@ export function parseCSV(file: File): Promise<ParseResult> {
           metadataColumns: text.filter(
             (c) => c !== uidColumn && c !== classColumn,
           ),
+          dimension: is2D ? 2 : 3,
         };
-
         const [xCol, yCol, zCol] = numeric;
         const mapping: ColumnMapping = {
           uid: uidColumn,
@@ -201,30 +220,34 @@ export function parseCSV(file: File): Promise<ParseResult> {
           y: yCol,
           z: zCol,
         };
-
         const points: DataPoint[] = [];
         const skippedRows: number[] = [];
-
+        const metadata: Record<string, Record<string, string>> = {};
+        // Hoisted out of the loop — the column list itself never
+        // changes per-row, only computed once.
+        const metadataColumns = schema.metadataColumns;
         rows.forEach((row, index) => {
           const x = Number(row[xCol]);
           const y = Number(row[yCol]);
-          const z = Number(row[zCol]);
+          const z = is2D ? 0 : Number(row[zCol]);
           const uid = row[uidColumn]?.trim();
           const className = row[classColumn]?.trim();
-
           const isValid =
             uid &&
             className &&
             Number.isFinite(x) &&
             Number.isFinite(y) &&
             Number.isFinite(z);
-
           if (!isValid) {
-            skippedRows.push(index + 2); // +2: 1-indexed + header row
+            skippedRows.push(index + 2);
             return;
           }
-
           points.push({ uid, x, y, z, className });
+          if (metadataColumns.length > 0) {
+            metadata[uid] = Object.fromEntries(
+              metadataColumns.map((col) => [col, row[col] ?? ""]),
+            );
+          }
         });
 
         if (points.length === 0) {
@@ -236,7 +259,7 @@ export function parseCSV(file: File): Promise<ParseResult> {
           return;
         }
 
-        resolve({ points, mapping, schema, skippedRows });
+        resolve({ points, mapping, schema, metadata, skippedRows });
       },
       error: (error) => reject(error),
     });

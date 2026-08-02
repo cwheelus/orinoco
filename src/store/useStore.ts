@@ -6,7 +6,7 @@ import {
   type OctantSign,
 } from "../lib/gridSpace";
 import type { DataPoint } from "../types";
-
+import type { DatasetSchema } from "../lib/parseCSV";
 export type { ScalingMode, OctantSign };
 
 // The analyst's typed ± bound per axis for "custom" scaling, kept as raw
@@ -128,6 +128,14 @@ interface VisualizerState {
   // App.tsx's Point Analysis panel both read these instead of
   // hardcoded label strings.
   axisLabels: AxisLabels;
+  // Full parser-detected schema for the active dataset (headers,
+  // numeric/text columns, uid/class columns, dimension). null until
+  // the first dataset loads. See lib/parseCSV.ts's DatasetSchema.
+  datasetSchema: DatasetSchema | null;
+  // Non-numeric field values per point, keyed by uid — see
+  // lib/parseCSV.ts's ParseResult.metadata for the full contract.
+  // null until the first dataset loads.
+  pointMetadata: Record<string, Record<string, string>> | null;
   // The point in 3D space the camera currently orbits around and looks
   // at. Read by CameraRig.tsx (for WASD movement math) and by
   // OrbitControls in App.tsx (for mouse-drag rotation target).
@@ -220,7 +228,12 @@ interface VisualizerState {
   // parseCSV's detected ColumnMapping (mapping.x/y/z). Also resets the
   // pivot back to the origin and clears any stale hoveredPoint, since
   // both referenced the OLD dataset's points/positions.
-  setDataPoints: (points: DataPoint[], labels: AxisLabels) => void;
+  setDataPoints: (
+    points: DataPoint[],
+    labels: AxisLabels,
+    schema: DatasetSchema,
+    metadata: Record<string, Record<string, string>>,
+  ) => void;
   // Updates the pivot. Called from PointCloud.tsx's onClick handler.
   setPivot: (p: [number, number, number]) => void;
   // Updates hoveredPoint. Called from PointCloud.tsx's onPointerOver/
@@ -266,6 +279,10 @@ export const useStore = create<VisualizerState>((set) => ({
     scalingConfig("normalized", EMPTY_CUSTOM_BOUNDS),
   ),
   axisLabels: DEFAULT_AXIS_LABELS,
+  // No dataset schema until the first CSV loads (see setDataPoints).
+  datasetSchema: null,
+  pointMetadata: null,
+  // Starting pivot: the world origin, per the project spec — the
   // Starting pivot: the world origin, per the project spec — the
   // camera should default to orbiting (0,0,0) until a point is clicked.
   pivot: [0, 0, 0],
@@ -300,10 +317,12 @@ export const useStore = create<VisualizerState>((set) => ({
   customBounds: EMPTY_CUSTOM_BOUNDS,
   // Default tick granularity — ~10 per side (Axes.tsx nice-rounds it).
   tickDensity: 10,
-  setDataPoints: (dataPoints, axisLabels) =>
+  setDataPoints: (dataPoints, axisLabels, datasetSchema, pointMetadata) =>
     set((state) => ({
       dataPoints,
       axisLabels,
+      datasetSchema,
+      pointMetadata,
       // Recompute against the CURRENT scaling mode/bounds so a loaded CSV
       // respects whatever scaling the analyst has selected. Custom bounds
       // are kept (not reset) — they're a display preference, and any that

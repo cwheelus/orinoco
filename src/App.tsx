@@ -122,9 +122,14 @@ function App() {
   // their deterministic generated color instead of being silently omitted.
   const dataPoints = useStore((state) => state.dataPoints);
   // Analyst's manual color picks for classes — passed to getClassColor()
-  // as the highest-precedence source. Empty by default until the color
-  // picker UI (Phase 4) populates it.
+  // as the highest-precedence source. Populated by the colors.csv
+  // loader (see lib/parseColorsCSV.ts), not an in-app picker — see
+  // Charles's original spec and the #43 discussion for why.
   const classColorOverrides = useStore((state) => state.classColorOverrides);
+  // Non-numeric field values for the currently-hovered point, keyed
+  // by uid — see lib/parseCSV.ts's ParseResult.metadata for the
+  // shape. null until the first dataset loads.
+  const pointMetadata = useStore((state) => state.pointMetadata);
   // Setter for the colors.csv loader below — replaces the whole
   // override map at once rather than looping setClassColor per row.
   const setClassColorOverrides = useStore(
@@ -172,8 +177,14 @@ function App() {
     // screen if this attempt succeeds cleanly.
     setLoadError(null);
     try {
-      const { points, mapping, skippedRows } = await parseCSV(file);
-      setDataPoints(points, { x: mapping.x, y: mapping.y, z: mapping.z });
+      const { points, mapping, schema, metadata, skippedRows } =
+        await parseCSV(file);
+      setDataPoints(
+        points,
+        { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
+        schema,
+        metadata,
+      );
       if (skippedRows.length > 0) {
         // Not a hard failure — the file loaded, just with some rows
         // excluded. Still worth surfacing so the analyst knows the
@@ -224,8 +235,13 @@ function App() {
       type: "text/csv",
     });
     parseCSV(file)
-      .then(({ points, mapping }) =>
-        setDataPoints(points, { x: mapping.x, y: mapping.y, z: mapping.z }),
+      .then(({ points, mapping, schema, metadata }) =>
+        setDataPoints(
+          points,
+          { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
+          schema,
+          metadata,
+        ),
       )
       .catch((err) =>
         setLoadError(
@@ -392,6 +408,49 @@ function App() {
                     </div>
                   ))}
                 </div>
+                {/* Non-numeric descriptive fields from the CSV (any
+                    text column beyond uid/class), keyed by the
+                    currently-hovered point's uid. Fully dynamic — no
+                    column names hardcoded, so any CSV's extra fields
+                    (source IP, hostname, department, whatever an
+                    analyst's data happens to have) render automatically
+                    with zero code changes. Only shows when metadata
+                    genuinely exists for this point AND has at least one
+                    field, so datasets with no extra text columns don't
+                    render an empty, oddly-titled section. */}
+                {pointMetadata?.[hoveredPoint.uid] &&
+                  Object.keys(pointMetadata[hoveredPoint.uid]).length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      <span className={`${TEXT.faint} text-[10px] block mb-1`}>
+                        Details
+                      </span>
+                      {Object.entries(pointMetadata[hoveredPoint.uid]).map(
+                        ([key, value], i, arr) => (
+                          <div
+                            key={key}
+                            className={`flex justify-between pb-1 ${
+                              i < arr.length - 1
+                                ? `border-b ${PANEL_APP.hairline}`
+                                : ""
+                            }`}
+                          >
+                            <span
+                              className={`${TEXT.faint} text-[10px] truncate max-w-[60%]`}
+                              title={key}
+                            >
+                              {key}
+                            </span>
+                            <span
+                              className={`${TEXT.onFilled} font-mono text-xs truncate max-w-[40%]`}
+                              title={value}
+                            >
+                              {value}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
               </div>
             </div>
           )}
