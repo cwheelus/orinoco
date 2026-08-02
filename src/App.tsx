@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react"; // ← CHANGED: added useMemo
+import { useState, useRef, useEffect, useMemo } from "react";
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
@@ -255,7 +255,6 @@ function App() {
   // or unknown — gets a swatch in the legend. Memoized since it only
   // changes when the dataset changes, not on every hover or camera move.
   const classNames = useMemo(
-    // ← CHANGED: added useMemo block
     () => Array.from(new Set(dataPoints.map((p) => p.className))).sort(),
     [dataPoints],
   );

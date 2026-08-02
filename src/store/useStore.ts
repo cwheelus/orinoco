@@ -283,7 +283,6 @@ export const useStore = create<VisualizerState>((set) => ({
   datasetSchema: null,
   pointMetadata: null,
   // Starting pivot: the world origin, per the project spec — the
-  // Starting pivot: the world origin, per the project spec — the
   // camera should default to orbiting (0,0,0) until a point is clicked.
   pivot: [0, 0, 0],
   // Nothing is hovered when the app first loads.
