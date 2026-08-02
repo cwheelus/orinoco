@@ -9,10 +9,10 @@
  *
  * PRECEDENCE (highest to lowest):
  *   1. Manual override  — an analyst-picked color for this class,
- *      stored in the Zustand store's classColorOverrides map. Not
- *      wired up yet (Phase 2/3 — see below); getClassColor already
- *      accepts an overrides argument so consumers don't need to
- *      change again when that lands.
+ *      stored in the Zustand store's classColorOverrides map (for
+ *      example, loaded from colors.csv or set via the UI).
+ *      getClassColor accepts an overrides argument so callers remain
+ *      simple and the precedence chain stays centralized.
  *   2. Built-in color    — the four original semantic colors
  *      (normal/nss/qc/zt), unchanged from the original spec.
  *   3. Generated color   — deterministic, derived from the class
