@@ -14,23 +14,27 @@ import type { DataPoint } from "../types";
  * 1. Parse the file generically, reading whatever headers exist.
  * 2. Classify each column as NUMERIC or TEXT by sampling its values.
  * 3. Auto-detect likely roles from that classification:
- *    - Exactly 3 numeric columns -> those become x/y/z, IN HEADER
- *      ORDER. This is a real, known limitation: if a CSV's numeric
- *      columns aren't already in a meaningful left-to-right order,
- *      there's no way for this function to know which one "should"
- *      be X vs Y vs Z. A manual column-picker UI would resolve this,
- *      but isn't built yet — tracked as follow-up work, not silently
- *      assumed to be correct here.
+ *    - 2 numeric columns -> treated as a 2D dataset, Z synthesized as 0.
+ *    - 3+ numeric columns -> the first three (in header order) become
+ *      the DEFAULT x/y/z. This is a real, known limitation: if a
+ *      CSV's numeric columns aren't already in a meaningful
+ *      left-to-right order, there's no way for this function to know
+ *      which one "should" be X vs Y vs Z on its own. The analyst can
+ *      override this default afterward via the Data panel's axis
+ *      selectors, which call buildPoints() below directly against the
+ *      retained rows — no reparse/re-upload needed. Any numeric
+ *      columns beyond the chosen x/y/z are preserved in
+ *      schema.numericColumns so they remain selectable.
  *    - Among text columns: the one with the most unique values
  *      (closer to one-per-row) is guessed as the uid; the remaining
  *      text column, if any, is guessed as the class/label. Any
- *      further text columns beyond these two are currently ignored —
- *      also a known constraint, not a silent bug.
+ *      further text columns beyond these two are captured as
+ *      metadata (see ParseResult.metadata) rather than ignored.
  * 4. Return both the parsed points AND the detected column mapping,
  *    so the caller can show the user which real column became X, Y,
  *    Z, uid, and class, rather than that being an invisible guess.
  *
- * If auto-detection can't confidently find exactly 3 numeric + at
+ * If auto-detection can't confidently find at least 2 numeric + at
  * least 1 text column, parsing fails with a clear error rather than
  * guessing wrong silently.
  */
@@ -40,9 +44,11 @@ export interface ColumnMapping {
   className: string;
   x: string;
   y: string;
-  // Absent for a 2D dataset (2 numeric columns) — there is no Z
-  // column in the CSV to name. See DatasetSchema.dimension for the
-  // authoritative signal of which case a given dataset is.
+  // Absent for a 2D dataset (2 numeric columns, or a manual selection
+  // that leaves Z unset) — there is no Z column in that case. See
+  // DatasetSchema.dimension for the authoritative signal of which
+  // case the ORIGINAL parsed dataset was; a manually-remapped
+  // dataset's actual dimensionality is just "mapping.z is set or not".
   z?: string;
 }
 
@@ -54,14 +60,21 @@ export interface DatasetSchema {
   classColumn: string;
   metadataColumns: string[];
   // 2 for a flat-plane dataset (2 numeric columns; Z synthesized as a
-  // constant 0), 3 for a normal 3D dataset. Read by Axes.tsx to decide
-  // whether to render the Z axis at all.
+  // constant 0), 3 for a normal 3D dataset. Reflects the ORIGINAL
+  // auto-detected shape of the file, not necessarily the current
+  // mapping if the analyst has since picked a different set of axes
+  // (e.g. choosing to leave Z unset on a 3+-numeric-column dataset,
+  // which is a valid manual selection). Read by Axes.tsx to decide
+  // whether to render the Z axis at all; when a manual mapping is
+  // active, prefer checking mapping.z directly instead.
   dimension: 2 | 3;
 }
 
 export interface ParseResult {
   // Original parsed CSV rows retained so axis selections can be
-  // changed without reparsing or re-uploading the dataset.
+  // changed without reparsing or re-uploading the dataset. See
+  // useStore.ts's setColumnMapping, which calls buildPoints() again
+  // against these same rows with a new ColumnMapping.
   rows: Record<string, string>[];
 
   points: DataPoint[];
@@ -77,7 +90,8 @@ export interface ParseResult {
   metadata: Record<string, Record<string, string>>;
   // Row numbers (matching what a user would see in a spreadsheet,
   // 1-indexed + header row) skipped due to non-numeric values in a
-  // column that was otherwise classified as numeric.
+  // column that was otherwise classified as numeric, or missing
+  // uid/class values.
   skippedRows: number[];
 }
 
@@ -145,6 +159,66 @@ function pickUidColumn(
   return best;
 }
 
+// Builds DataPoint[] (plus parallel metadata and a skipped-row list)
+// from raw parsed rows against a given column mapping. Factored out
+// of parseCSV so the exact same logic can rerun when the analyst
+// changes which columns drive x/y/z, without reparsing the file or
+// asking them to re-upload it — see useStore.ts's setColumnMapping,
+// which is the other caller of this function besides parseCSV itself.
+export function buildPoints(
+  rows: Record<string, string>[],
+  schema: DatasetSchema,
+  mapping: ColumnMapping,
+): {
+  points: DataPoint[];
+  metadata: Record<string, Record<string, string>>;
+  skippedRows: number[];
+} {
+  const points: DataPoint[] = [];
+  const skippedRows: number[] = [];
+  const metadata: Record<string, Record<string, string>> = {};
+
+  // No Z column in the mapping means this build should treat the
+  // dataset as 2D, regardless of how many numeric columns the
+  // ORIGINAL file had — this covers both the auto-detected 2-column
+  // case and an analyst manually choosing to leave Z unset.
+  const is2D = !mapping.z;
+  // Hoisted out of the loop — the metadata column list itself never
+  // changes per-row, only computed once.
+  const metadataColumns = schema.metadataColumns;
+
+  rows.forEach((row, index) => {
+    const x = Number(row[mapping.x]);
+    const y = Number(row[mapping.y]);
+    const z = is2D ? 0 : Number(row[mapping.z!]);
+
+    const uid = row[mapping.uid]?.trim();
+    const className = row[mapping.className]?.trim();
+
+    const isValid =
+      uid &&
+      className &&
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      Number.isFinite(z);
+
+    if (!isValid) {
+      skippedRows.push(index + 2);
+      return;
+    }
+
+    points.push({ uid, x, y, z, className });
+
+    if (metadataColumns.length > 0) {
+      metadata[uid] = Object.fromEntries(
+        metadataColumns.map((col) => [col, row[col] ?? ""]),
+      );
+    }
+  });
+
+  return { points, metadata, skippedRows };
+}
+
 export function parseCSV(file: File): Promise<ParseResult> {
   return new Promise((resolve, reject) => {
     Papa.parse<Record<string, string>>(file, {
@@ -164,10 +238,12 @@ export function parseCSV(file: File): Promise<ParseResult> {
         // Need at least 2 numeric columns to visualize a dataset.
         // - 2 numeric columns: treated as a 2D dataset with Z synthesized as 0.
         // - 3 or more numeric columns: treated as a 3D dataset using the first
-        //   three numeric columns (in header order) for x/y/z.
-        // Additional numeric columns are preserved in schema.numericColumns
-        // but are not currently plotted. Manual column selection is a future
-        // enhancement.
+        //   three numeric columns (in header order) for x/y/z as the DEFAULT
+        //   mapping. Additional numeric columns are preserved in
+        //   schema.numericColumns; the analyst may override which columns
+        //   drive x/y/z afterward via the Data panel — see useStore.ts's
+        //   setColumnMapping, which rebuilds points via buildPoints above
+        //   against the same retained rows, no reparse needed.
         if (numeric.length < 2) {
           reject(
             new Error(
@@ -193,15 +269,8 @@ export function parseCSV(file: File): Promise<ParseResult> {
         const uidColumn = pickUidColumn(text, rows);
         const classColumn = text.find((c) => c !== uidColumn) ?? uidColumn;
 
-        // Built here — after both the numeric and text-column checks
-        // above have already passed — so every field is a real,
-        // validated value, never a placeholder. The error above
-        // ("needs manual column selection, which isn't supported
-        // yet") names a real future capability; this schema is the
-        // extension point for it, but only once construction is safe.
-
         // Exactly two numeric columns represent a 2D dataset.
-        // Z is synthesized as 0 for every point.
+        // Z is synthesized as 0 for every point in that case.
         const is2D = numeric.length === 2;
         const schema: DatasetSchema = {
           headers,
@@ -214,6 +283,11 @@ export function parseCSV(file: File): Promise<ParseResult> {
           ),
           dimension: is2D ? 2 : 3,
         };
+
+        // Default mapping: first two/three numeric columns in header
+        // order. The analyst may override this later via the Data
+        // panel without needing to re-parse this file — see
+        // useStore.ts's setColumnMapping.
         const [xCol, yCol, zCol] = numeric;
         const mapping: ColumnMapping = {
           uid: uidColumn,
@@ -222,35 +296,12 @@ export function parseCSV(file: File): Promise<ParseResult> {
           y: yCol,
           z: zCol,
         };
-        const points: DataPoint[] = [];
-        const skippedRows: number[] = [];
-        const metadata: Record<string, Record<string, string>> = {};
-        // Hoisted out of the loop — the column list itself never
-        // changes per-row, only computed once.
-        const metadataColumns = schema.metadataColumns;
-        rows.forEach((row, index) => {
-          const x = Number(row[xCol]);
-          const y = Number(row[yCol]);
-          const z = is2D ? 0 : Number(row[zCol]);
-          const uid = row[uidColumn]?.trim();
-          const className = row[classColumn]?.trim();
-          const isValid =
-            uid &&
-            className &&
-            Number.isFinite(x) &&
-            Number.isFinite(y) &&
-            Number.isFinite(z);
-          if (!isValid) {
-            skippedRows.push(index + 2);
-            return;
-          }
-          points.push({ uid, x, y, z, className });
-          if (metadataColumns.length > 0) {
-            metadata[uid] = Object.fromEntries(
-              metadataColumns.map((col) => [col, row[col] ?? ""]),
-            );
-          }
-        });
+
+        const { points, metadata, skippedRows } = buildPoints(
+          rows,
+          schema,
+          mapping,
+        );
 
         if (points.length === 0) {
           reject(
