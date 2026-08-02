@@ -6,7 +6,7 @@ import {
   type OctantSign,
 } from "../lib/gridSpace";
 import type { DataPoint } from "../types";
-
+import type { DatasetSchema } from "../lib/parseCSV";
 export type { ScalingMode, OctantSign };
 
 // The analyst's typed ± bound per axis for "custom" scaling, kept as raw
@@ -128,6 +128,14 @@ interface VisualizerState {
   // App.tsx's Point Analysis panel both read these instead of
   // hardcoded label strings.
   axisLabels: AxisLabels;
+  // Full parser-detected schema for the active dataset (headers,
+  // numeric/text columns, uid/class columns, dimension). null until
+  // the first dataset loads. See lib/parseCSV.ts's DatasetSchema.
+  datasetSchema: DatasetSchema | null;
+  // Non-numeric field values per point, keyed by uid — see
+  // lib/parseCSV.ts's ParseResult.metadata for the full contract.
+  // null until the first dataset loads.
+  pointMetadata: Record<string, Record<string, string>> | null;
   // The point in 3D space the camera currently orbits around and looks
   // at. Read by CameraRig.tsx (for WASD movement math) and by
   // OrbitControls in App.tsx (for mouse-drag rotation target).
@@ -164,6 +172,11 @@ interface VisualizerState {
   // The distinct class names in the current dataset (first-seen order).
   // Drives the Data page's class-visibility toggle list.
   availableClasses: string[];
+  // Analyst's manual color overrides per class name. Keys are class names,
+  // values are "#rrggbb" hex strings. Empty by default; populated by the
+  // color-picker UI (Phase 4). getClassColor() reads this map as the
+  // highest-precedence source — see lib/classColors.ts.
+  classColorOverrides: Record<string, string>;
   // Class names the analyst has hidden via the Data page. Points whose
   // className is in here are filtered out of the render (see
   // PointCloud.tsx). Stored as the HIDDEN set (rather than visible) so
@@ -215,7 +228,12 @@ interface VisualizerState {
   // parseCSV's detected ColumnMapping (mapping.x/y/z). Also resets the
   // pivot back to the origin and clears any stale hoveredPoint, since
   // both referenced the OLD dataset's points/positions.
-  setDataPoints: (points: DataPoint[], labels: AxisLabels) => void;
+  setDataPoints: (
+    points: DataPoint[],
+    labels: AxisLabels,
+    schema: DatasetSchema,
+    metadata: Record<string, Record<string, string>>,
+  ) => void;
   // Updates the pivot. Called from PointCloud.tsx's onClick handler.
   setPivot: (p: [number, number, number]) => void;
   // Updates hoveredPoint. Called from PointCloud.tsx's onPointerOver/
@@ -239,6 +257,15 @@ interface VisualizerState {
   setNumericFilter: (axis: AxisKey, filter: NumericFilter) => void;
   // Clears all class and numeric filters back to "show everything".
   clearFilters: () => void;
+  // Sets a manual color override for one class. Called from the color
+  // picker UI (Phase 4). Passing an empty string removes the override.
+  setClassColor: (className: string, color: string) => void;
+  // Clears all manual color overrides back to generated/built-in colors.
+  resetClassColors: () => void;
+  // Replaces the entire override map at once — used when loading a
+  // colors.csv file (see lib/parseColorsCSV.ts), so an N-row file
+  // becomes one store update instead of N calls to setClassColor.
+  setClassColorOverrides: (overrides: Record<string, string>) => void;
 }
 
 export const useStore = create<VisualizerState>((set) => ({
@@ -252,6 +279,10 @@ export const useStore = create<VisualizerState>((set) => ({
     scalingConfig("normalized", EMPTY_CUSTOM_BOUNDS),
   ),
   axisLabels: DEFAULT_AXIS_LABELS,
+  // No dataset schema until the first CSV loads (see setDataPoints).
+  datasetSchema: null,
+  pointMetadata: null,
+  // Starting pivot: the world origin, per the project spec — the
   // Starting pivot: the world origin, per the project spec — the
   // camera should default to orbiting (0,0,0) until a point is clicked.
   pivot: [0, 0, 0],
@@ -270,6 +301,7 @@ export const useStore = create<VisualizerState>((set) => ({
   // Filters start fully open — every class shown, no numeric filtering.
   // Empty until the sample CSV loads on mount (setDataPoints fills it).
   availableClasses: [],
+  classColorOverrides: {},
   hiddenClasses: [],
   numericFilters: NO_NUMERIC_FILTERS,
   // All axes' tick marks/numbers visible by default. Unlike
@@ -285,10 +317,12 @@ export const useStore = create<VisualizerState>((set) => ({
   customBounds: EMPTY_CUSTOM_BOUNDS,
   // Default tick granularity — ~10 per side (Axes.tsx nice-rounds it).
   tickDensity: 10,
-  setDataPoints: (dataPoints, axisLabels) =>
+  setDataPoints: (dataPoints, axisLabels, datasetSchema, pointMetadata) =>
     set((state) => ({
       dataPoints,
       axisLabels,
+      datasetSchema,
+      pointMetadata,
       // Recompute against the CURRENT scaling mode/bounds so a loaded CSV
       // respects whatever scaling the analyst has selected. Custom bounds
       // are kept (not reset) — they're a display preference, and any that
@@ -348,10 +382,19 @@ export const useStore = create<VisualizerState>((set) => ({
       const customBounds = { ...state.customBounds, [axis]: value };
       return {
         customBounds,
-        // Recompute live so typing a bound reflects immediately. Only
-        // actually changes the render in "custom" mode; harmless in the
-        // auto modes (custom bounds are ignored there).
         gridSpace: gridSpaceFor({ ...state, customBounds }),
       };
     }),
+  setClassColor: (className, color) =>
+    set((state) => ({
+      classColorOverrides: color
+        ? { ...state.classColorOverrides, [className]: color }
+        : Object.fromEntries(
+            Object.entries(state.classColorOverrides).filter(
+              ([k]) => k !== className,
+            ),
+          ),
+    })),
+  resetClassColors: () => set({ classColorOverrides: {} }),
+  setClassColorOverrides: (classColorOverrides) => set({ classColorOverrides }),
 }));

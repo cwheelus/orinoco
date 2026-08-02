@@ -160,6 +160,7 @@ export function Axes() {
   const axisLabels = useStore((state) => state.axisLabels);
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const tickDensity = useStore((state) => state.tickDensity);
+  const datasetSchema = useStore((state) => state.datasetSchema);
 
   const ticks = useMemo(
     () => ({
@@ -170,10 +171,17 @@ export function Axes() {
     [DISPLAY_RANGE, CENTER, SCALE, tickDensity],
   );
 
-  const axes = useMemo(
-    () => axisDefs(ZERO_RENDER.x, ZERO_RENDER.y, ZERO_RENDER.z),
-    [ZERO_RENDER],
-  );
+  // 2D datasets (exactly 2 numeric columns) have no real Z column —
+  // parseCSV.ts synthesizes z=0 for every point, but drawing a Z axis
+  // for a dimension that doesn't exist in the data would be
+  // misleading. Filtering it out of `axes` here means the line, arrow,
+  // title, and ticks below all skip Z automatically — nothing else in
+  // this file needs its own dimension check.
+  const is2D = datasetSchema?.dimension === 2;
+  const axes = useMemo(() => {
+    const all = axisDefs(ZERO_RENDER.x, ZERO_RENDER.y, ZERO_RENDER.z);
+    return is2D ? all.filter((ax) => ax.key !== "z") : all;
+  }, [ZERO_RENDER, is2D]);
 
   // Collected every render; each tick's group is scaled per-frame below to
   // keep its mark + number a constant size on screen.

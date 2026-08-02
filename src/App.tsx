@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react"; // ← CHANGED: added useMemo
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
@@ -14,8 +14,10 @@ import { CartesianGrid } from "./components/CartesianGrid";
 import { IsolationTransition } from "./components/IsolationTransition";
 import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
-import { classColors, DEFAULT_CLASS_COLOR } from "./lib/classColors";
+import { parseColorsCSV } from "./lib/parseColorsCSV";
+import { getClassColor } from "./lib/classColors";
 import { SURFACE, PANEL_APP, TEXT, ERROR, KBD } from "./lib/theme";
+
 // The bundled sample dataset, imported as raw CSV text (Vite `?raw`). The
 // exact same parseCSV → setDataPoints path a user's uploaded CSV takes.
 import sampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
@@ -116,6 +118,23 @@ function App() {
   // Whether the grid box is currently shown — toggled from the
   // Toolbar's grid on/off icon.
   const gridVisible = useStore((state) => state.gridVisible);
+  // Full dataset — needed for the color legend so unknown classes get
+  // their deterministic generated color instead of being silently omitted.
+  const dataPoints = useStore((state) => state.dataPoints);
+  // Analyst's manual color picks for classes — passed to getClassColor()
+  // as the highest-precedence source. Populated by the colors.csv
+  // loader (see lib/parseColorsCSV.ts), not an in-app picker — see
+  // Charles's original spec and the #43 discussion for why.
+  const classColorOverrides = useStore((state) => state.classColorOverrides);
+  // Non-numeric field values for the currently-hovered point, keyed
+  // by uid — see lib/parseCSV.ts's ParseResult.metadata for the
+  // shape. null until the first dataset loads.
+  const pointMetadata = useStore((state) => state.pointMetadata);
+  // Setter for the colors.csv loader below — replaces the whole
+  // override map at once rather than looping setClassColor per row.
+  const setClassColorOverrides = useStore(
+    (state) => state.setClassColorOverrides,
+  );
   // Whether the interface is in dark or light mode — toggled from the
   // Toolbar's sun/moon icon. Drives the "light" class applied to the
   // root div below, which activates every theme.ts token's light:
@@ -158,8 +177,14 @@ function App() {
     // screen if this attempt succeeds cleanly.
     setLoadError(null);
     try {
-      const { points, mapping, skippedRows } = await parseCSV(file);
-      setDataPoints(points, { x: mapping.x, y: mapping.y, z: mapping.z });
+      const { points, mapping, schema, metadata, skippedRows } =
+        await parseCSV(file);
+      setDataPoints(
+        points,
+        { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
+        schema,
+        metadata,
+      );
       if (skippedRows.length > 0) {
         // Not a hard failure — the file loaded, just with some rows
         // excluded. Still worth surfacing so the analyst knows the
@@ -177,6 +202,28 @@ function App() {
     }
   };
 
+  // Loads a colors.csv (className,color) to override the deterministic
+  // generated colors — see lib/parseColorsCSV.ts and lib/classColors.ts
+  // for the precedence chain (override > built-in > generated). Per
+  // Charles's original spec: colors are "set and changed from that
+  // file," not via an in-app picker.
+  const handleColorFileSelected = async (file: File) => {
+    setLoadError(null);
+    try {
+      const { overrides, skippedRows } = await parseColorsCSV(file);
+      setClassColorOverrides(overrides);
+      if (skippedRows.length > 0) {
+        setLoadError(
+          `Color file loaded with ${skippedRows.length} row(s) skipped (missing or invalid): rows ${skippedRows.join(", ")}`,
+        );
+      }
+    } catch (err) {
+      setLoadError(
+        err instanceof Error ? err.message : "Failed to load color file.",
+      );
+    }
+  };
+
   // Load the bundled sample dataset once on mount, through the same
   // parseCSV → setDataPoints pipeline as a user upload — so it's the
   // initial dataset without any separate hardcoded-data code path. Wrap
@@ -188,8 +235,13 @@ function App() {
       type: "text/csv",
     });
     parseCSV(file)
-      .then(({ points, mapping }) =>
-        setDataPoints(points, { x: mapping.x, y: mapping.y, z: mapping.z }),
+      .then(({ points, mapping, schema, metadata }) =>
+        setDataPoints(
+          points,
+          { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
+          schema,
+          metadata,
+        ),
       )
       .catch((err) =>
         setLoadError(
@@ -198,18 +250,32 @@ function App() {
       );
   }, [setDataPoints]);
 
+  // Unique class names from the loaded dataset, sorted for stable order.
+  // Derived from dataPoints (not a hardcoded map) so any class — built-in
+  // or unknown — gets a swatch in the legend. Memoized since it only
+  // changes when the dataset changes, not on every hover or camera move.
+  const classNames = useMemo(
+    // ← CHANGED: added useMemo block
+    () => Array.from(new Set(dataPoints.map((p) => p.className))).sort(),
+    [dataPoints],
+  );
+
   return (
     <div
       className={`w-screen h-screen ${SURFACE.root} relative ${
         darkMode ? "" : "light"
       }`}
     >
-      {/* Toolbar: CSV loading, origin reset, and Data/Grid pages.
-          Rendered as its own fixed-position panel — NOT nested inside
-          the HUD's flex layout below — since its screen position is
-          self-managed (docked + resizable, see Toolbar.tsx) rather
-          than dictated by a parent flex/grid container. */}
-      <Toolbar onFileSelected={handleFileSelected} />
+      {/* Toolbar: data CSV loading, color-mapping CSV loading, origin
+          reset, and Data/Grid/Isolate pages. Rendered as its own
+          fixed-position panel — NOT nested inside the HUD's flex
+          layout below — since its screen position is self-managed
+          (docked + resizable, see Toolbar.tsx) rather than dictated
+          by a parent flex/grid container. */}
+      <Toolbar
+        onFileSelected={handleFileSelected}
+        onColorFileSelected={handleColorFileSelected}
+      />
 
       {/* 
           1. HUD OVERLAY (2D)
@@ -282,16 +348,13 @@ function App() {
                   <span className={`${TEXT.faint} text-[10px]`}>
                     Classification
                   </span>
-                  {/* Color driven by the shared classColors map (lib/classColors.ts)
-                      rather than a fixed set of Tailwind classes, since the real
-                      classes (normal/nss/qc/zt) use arbitrary hex values, not
-                      Tailwind's built-in palette. */}
                   <span
                     className="text-[10px] font-bold uppercase"
                     style={{
-                      color:
-                        classColors[hoveredPoint.className] ??
-                        DEFAULT_CLASS_COLOR,
+                      color: getClassColor(
+                        hoveredPoint.className,
+                        classColorOverrides,
+                      ),
                     }}
                   >
                     {hoveredPoint.className}
@@ -345,6 +408,49 @@ function App() {
                     </div>
                   ))}
                 </div>
+                {/* Non-numeric descriptive fields from the CSV (any
+                    text column beyond uid/class), keyed by the
+                    currently-hovered point's uid. Fully dynamic — no
+                    column names hardcoded, so any CSV's extra fields
+                    (source IP, hostname, department, whatever an
+                    analyst's data happens to have) render automatically
+                    with zero code changes. Only shows when metadata
+                    genuinely exists for this point AND has at least one
+                    field, so datasets with no extra text columns don't
+                    render an empty, oddly-titled section. */}
+                {pointMetadata?.[hoveredPoint.uid] &&
+                  Object.keys(pointMetadata[hoveredPoint.uid]).length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      <span className={`${TEXT.faint} text-[10px] block mb-1`}>
+                        Details
+                      </span>
+                      {Object.entries(pointMetadata[hoveredPoint.uid]).map(
+                        ([key, value], i, arr) => (
+                          <div
+                            key={key}
+                            className={`flex justify-between pb-1 ${
+                              i < arr.length - 1
+                                ? `border-b ${PANEL_APP.hairline}`
+                                : ""
+                            }`}
+                          >
+                            <span
+                              className={`${TEXT.faint} text-[10px] truncate max-w-[60%]`}
+                              title={key}
+                            >
+                              {key}
+                            </span>
+                            <span
+                              className={`${TEXT.onFilled} font-mono text-xs truncate max-w-[40%]`}
+                              title={value}
+                            >
+                              {value}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
               </div>
             </div>
           )}
@@ -387,32 +493,36 @@ function App() {
             </div>
           </div>
 
-          {/* Color Key: generated directly from lib/classColors.ts (the same
-              map PointCloud.tsx uses for sphere colors), so the legend can
-              never drift out of sync with what's actually rendered. */}
+          {/* Color key: one swatch per unique class in the loaded dataset.
+              getClassColor() resolves built-in colors (normal/nss/qc/zt) and
+              generates deterministic hues for any unknown class — no white
+              fallback. Replaces the old static classColors map which silently
+              defaulted to white for classes outside its hardcoded four. */}
           <div className={`${PANEL_APP.legend} p-3`}>
             <div className="flex gap-4">
-              {Object.entries(classColors).map(([className, color]) => (
-                <div key={className} className="flex items-center gap-2">
-                  <div
-                    className="w-2 h-4 rounded-sm"
-                    style={{
-                      backgroundColor: color,
-                      boxShadow: `0 0 8px ${color}`,
-                    }}
-                  />
-                  <span
-                    className={`text-[10px] uppercase font-bold ${TEXT.emphasis} tracking-widest`}
-                  >
-                    {className}
-                  </span>
-                </div>
-              ))}
+              {classNames.map((className) => {
+                const color = getClassColor(className, classColorOverrides);
+                return (
+                  <div key={className} className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-4 rounded-sm"
+                      style={{
+                        backgroundColor: color,
+                        boxShadow: `0 0 8px ${color}`,
+                      }}
+                    />
+                    <span
+                      className={`text-[10px] uppercase font-bold ${TEXT.emphasis} tracking-widest`}
+                    >
+                      {className}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
-
       {/* 
           2. THE 3D CANVAS (RENDER ENGINE)
           'shadows' enabled for high fidelity (optional).

@@ -40,12 +40,37 @@ export interface ColumnMapping {
   className: string;
   x: string;
   y: string;
-  z: string;
+  // Absent for a 2D dataset (2 numeric columns) — there is no Z
+  // column in the CSV to name. See DatasetSchema.dimension for the
+  // authoritative signal of which case a given dataset is.
+  z?: string;
+}
+
+export interface DatasetSchema {
+  headers: string[];
+  numericColumns: string[];
+  textColumns: string[];
+  uidColumn: string;
+  classColumn: string;
+  metadataColumns: string[];
+  // 2 for a flat-plane dataset (2 numeric columns; Z synthesized as a
+  // constant 0), 3 for a normal 3D dataset. Read by Axes.tsx to decide
+  // whether to render the Z axis at all.
+  dimension: 2 | 3;
 }
 
 export interface ParseResult {
   points: DataPoint[];
   mapping: ColumnMapping;
+  schema: DatasetSchema;
+  // Non-numeric field values per point, keyed by uid — kept parallel
+  // to `points` rather than merged into DataPoint, since DataPoint is
+  // a lean rendering object read constantly by PointCloud.tsx. Only
+  // covers schema.metadataColumns (text columns beyond uid/class).
+  // If a dataset contains duplicate uid values, later rows will
+  // overwrite earlier metadata entries for that uid — datasets are
+  // expected to provide unique identifiers.
+  metadata: Record<string, Record<string, string>>;
   // Row numbers (matching what a user would see in a spreadsheet,
   // 1-indexed + header row) skipped due to non-numeric values in a
   // column that was otherwise classified as numeric.
@@ -132,15 +157,19 @@ export function parseCSV(file: File): Promise<ParseResult> {
 
         const { numeric, text } = classifyColumns(headers, rows);
 
-        // Need exactly 3 numeric columns to plot as x/y/z, per the
-        // spec's 3D constraint (a 3D plot can't show more or fewer
-        // axes). More or fewer than 3 means we can't confidently
-        // auto-map without the user picking which 3 to use.
-        if (numeric.length !== 3) {
+        // Need at least 3 numeric columns to plot as x/y/z, per the
+        // spec's 3D constraint (a 3D plot needs exactly 3 axes).
+        // Fewer than 3 means there's nothing to auto-map — no amount
+        // of column selection fixes a CSV that doesn't have 3 numeric
+        // columns. More than 3 is fine: the first 3 in header order
+        // become x/y/z (see the comment near the destructuring below);
+        // the rest are recorded in schema.numericColumns but not
+        // plotted. No column-picker UI — a deliberate default to keep
+        // the interface minimal.
+        if (numeric.length < 2) {
           reject(
             new Error(
-              `Expected exactly 3 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}). ` +
-                `This CSV needs manual column selection, which isn't supported yet.`,
+              `Expected at least 2 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}).`,
             ),
           );
           return;
@@ -162,8 +191,28 @@ export function parseCSV(file: File): Promise<ParseResult> {
         const uidColumn = pickUidColumn(text, rows);
         const classColumn = text.find((c) => c !== uidColumn) ?? uidColumn;
 
-        const [xCol, yCol, zCol] = numeric;
+        // Built here — after both the numeric and text-column checks
+        // above have already passed — so every field is a real,
+        // validated value, never a placeholder. The error above
+        // ("needs manual column selection, which isn't supported
+        // yet") names a real future capability; this schema is the
+        // extension point for it, but only once construction is safe.
 
+        // Exactly two numeric columns represent a 2D dataset.
+        // Z is synthesized as 0 for every point.
+        const is2D = numeric.length === 2;
+        const schema: DatasetSchema = {
+          headers,
+          numericColumns: numeric,
+          textColumns: text,
+          uidColumn,
+          classColumn,
+          metadataColumns: text.filter(
+            (c) => c !== uidColumn && c !== classColumn,
+          ),
+          dimension: is2D ? 2 : 3,
+        };
+        const [xCol, yCol, zCol] = numeric;
         const mapping: ColumnMapping = {
           uid: uidColumn,
           className: classColumn,
@@ -171,30 +220,34 @@ export function parseCSV(file: File): Promise<ParseResult> {
           y: yCol,
           z: zCol,
         };
-
         const points: DataPoint[] = [];
         const skippedRows: number[] = [];
-
+        const metadata: Record<string, Record<string, string>> = {};
+        // Hoisted out of the loop — the column list itself never
+        // changes per-row, only computed once.
+        const metadataColumns = schema.metadataColumns;
         rows.forEach((row, index) => {
           const x = Number(row[xCol]);
           const y = Number(row[yCol]);
-          const z = Number(row[zCol]);
+          const z = is2D ? 0 : Number(row[zCol]);
           const uid = row[uidColumn]?.trim();
           const className = row[classColumn]?.trim();
-
           const isValid =
             uid &&
             className &&
             Number.isFinite(x) &&
             Number.isFinite(y) &&
             Number.isFinite(z);
-
           if (!isValid) {
-            skippedRows.push(index + 2); // +2: 1-indexed + header row
+            skippedRows.push(index + 2);
             return;
           }
-
           points.push({ uid, x, y, z, className });
+          if (metadataColumns.length > 0) {
+            metadata[uid] = Object.fromEntries(
+              metadataColumns.map((col) => [col, row[col] ?? ""]),
+            );
+          }
         });
 
         if (points.length === 0) {
@@ -206,7 +259,7 @@ export function parseCSV(file: File): Promise<ParseResult> {
           return;
         }
 
-        resolve({ points, mapping, skippedRows });
+        resolve({ points, mapping, schema, metadata, skippedRows });
       },
       error: (error) => reject(error),
     });
