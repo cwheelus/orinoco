@@ -2,7 +2,7 @@
 
 Project Orinoco is a browser-native 3D visualization tool for exploring network telemetry. It projects selected traffic features into a three-dimensional Cartesian space, allowing analysts to inspect individual observations, navigate spatial relationships, and investigate clusters interactively.
 
-The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (three numeric columns, one or two text columns) can be loaded directly in-browser — the bundled sample dataset itself now loads through this same CSV pipeline, rather than a separate hardcoded data path.
+The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (at least two numeric columns, one or two text columns) can be loaded directly in-browser — the bundled sample dataset itself now loads through this same CSV pipeline, rather than a separate hardcoded data path.
 
 ---
 
@@ -73,9 +73,9 @@ A loaded CSV's own column names replace these automatically — see **Dynamic Da
 Analysts can load any CSV dataset directly in-browser via the toolbar's file picker, rather than being limited to the bundled sample. The parser (`src/lib/parseCSV.ts`) auto-detects columns instead of assuming fixed names:
 
 1. Each column is classified as **numeric** or **text** by sampling its values
-2. The three numeric columns are mapped to X/Y/Z, in the order they appear in the file's header row
-3. Text columns are mapped to a unique identifier (`uid`) and a classification label (`class`) — the column with the highest ratio of unique values is treated as the identifier
-4. Malformed files (wrong number of numeric columns, no text columns, empty file) fail with a specific, visible error message rather than silently producing bad output or crashing
+2. With exactly 2 numeric columns, the dataset is treated as 2D (Z synthesized as 0). With 3 or more, the first three (in header order) become the default X/Y/Z — the analyst can override this afterward via the Data panel's Axis Mapping selectors, which apply instantly against the retained rows without re-parsing the file
+3. Text columns are mapped to a unique identifier (`uid`) and a classification label (`class`) — the column with the highest ratio of unique values is treated as the identifier; any additional text columns are captured as point metadata, shown in the Point Analysis HUD
+4. Malformed files (fewer than 2 numeric columns, no text columns, empty file) fail with a specific, visible error message rather than silently producing bad output or crashing
 5. Rows with missing or invalid numeric values are skipped individually rather than failing the whole file — a banner reports which row numbers were excluded
 
 Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to any one dataset.
@@ -85,21 +85,25 @@ Once a file loads successfully, the grid's scale, the axis labels, the Point Ana
 ```mermaid
 flowchart LR
     A[User selects CSV via Toolbar paperclip] --> B[parseCSV.ts]
-    B --> C{Exactly 3 numeric columns found?}
+    B --> C{At least 2 numeric columns found?}
     C -- No --> D[Reject with specific error message]
     D --> E[Error banner shown, previous dataset stays active]
     C -- Yes --> F[Classify text columns: uid = most unique values, class = remaining column]
-    F --> G[setDataPoints in store]
-    G --> H[computeGridSpace recomputes scale, ranges, and octant isolation clears]
-    G --> I[axisLabels updated]
-    H --> J[Grid and points re-render]
-    I --> J
+    F --> G[Default mapping: first 2/3 numeric columns to x/y/z]
+    G --> H[setDataPoints in store]
+    H --> I[computeGridSpace recomputes scale, ranges, and octant isolation clears]
+    H --> J[axisLabels updated]
+    I --> K[Grid and points re-render]
+    J --> K
+    K --> L[Analyst may remap axes via Data panel]
+    L --> M[setColumnMapping rebuilds points from retained rows, no re-parse]
+    M --> H
 ```
 
 **Known limitations (accepted for the current release):**
 
-- Column order in the source file determines which numeric column becomes X, Y, or Z — there is no manual override UI yet
-- Only the first two text columns are used (identifier and classification); additional text columns are currently ignored
+- Manual axis selection is only exposed once a dataset has more than 2 numeric columns — with exactly 2, there's nothing to choose between, so the selector is intentionally hidden to keep the interface minimal
+- No manual override for which text column becomes `uid` vs. `class` — this is still auto-detected by uniqueness ratio
 
 ---
 
