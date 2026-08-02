@@ -60,6 +60,10 @@ export interface DatasetSchema {
 }
 
 export interface ParseResult {
+  // Original parsed CSV rows retained so axis selections can be
+  // changed without reparsing or re-uploading the dataset.
+  rows: Record<string, string>[];
+
   points: DataPoint[];
   mapping: ColumnMapping;
   schema: DatasetSchema;
@@ -257,7 +261,7 @@ export function parseCSV(file: File): Promise<ParseResult> {
           return;
         }
 
-        resolve({ points, mapping, schema, metadata, skippedRows });
+        resolve({ rows, points, mapping, schema, metadata, skippedRows });
       },
       error: (error) => reject(error),
     });
