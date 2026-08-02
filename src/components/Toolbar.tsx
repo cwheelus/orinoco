@@ -131,6 +131,9 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
   const activeTool = useStore((state) => state.activeTool);
   const setActiveTool = useStore((state) => state.setActiveTool);
   const axisLabels = useStore((state) => state.axisLabels);
+  const datasetSchema = useStore((state) => state.datasetSchema);
+  const columnMapping = useStore((state) => state.columnMapping);
+  const setColumnMapping = useStore((state) => state.setColumnMapping);
   const availableClasses = useStore((state) => state.availableClasses);
   const hiddenClasses = useStore((state) => state.hiddenClasses);
   const numericFilters = useStore((state) => state.numericFilters);
@@ -586,7 +589,61 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                       );
                     })}
                   </div>
-
+                  
+                  {/* Manual axis mapping: lets the analyst override
+                      which CSV columns drive the plotted X/Y/Z, instead
+                      of always using parseCSV's first-2/3-numeric-
+                      columns default. Only shown when the dataset has
+                      more than 2 numeric columns — with exactly 2,
+                      there's nothing to choose between. */}
+                  {datasetSchema &&
+                    columnMapping &&
+                    datasetSchema.numericColumns.length > 2 && (
+                      <>
+                        <p className={`${TEXT.subtle} mb-1 mt-2`}>
+                          Axis Mapping
+                        </p>
+                        <div className="space-y-1 mb-2">
+                          {(["x", "y", "z"] as AxisKey[]).map((axis) => (
+                            <div key={axis} className="flex items-center gap-1">
+                              <span
+                                className={`text-[9px] font-mono ${TEXT.muted} w-14 shrink-0`}
+                              >
+                                {axis.toUpperCase()}
+                              </span>
+                              <select
+                                value={columnMapping[axis] ?? ""}
+                                onChange={(e) =>
+                                  setColumnMapping({
+                                    ...columnMapping,
+                                    ...(axis === "z"
+                                      ? { z: e.target.value || undefined }
+                                      : { [axis]: e.target.value }),
+                                  })
+                                }
+                                className={`${INPUT.base} text-[10px] rounded px-1 py-0.5 w-full font-mono`}
+                                aria-label={`${axis.toUpperCase()} axis column`}
+                              >
+                                {axis === "z" && (
+                                  <option value="" className={INPUT.optionBg}>
+                                    None (2D)
+                                  </option>
+                                )}
+                                {datasetSchema.numericColumns.map((col) => (
+                                  <option
+                                    key={col}
+                                    value={col}
+                                    className={INPUT.optionBg}
+                                  >
+                                    {col}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   {/* Numeric filters: one operator dropdown + value box
                       per axis, comparing the point's RAW value on that
                       axis (matching the axis tick labels). */}
