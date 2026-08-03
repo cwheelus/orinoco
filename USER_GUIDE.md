@@ -294,9 +294,9 @@ You are not limited to the bundled sample. Any CSV matching the expected shape c
 
 Your CSV should have:
 
-- **Exactly 3 numeric columns** — mapped to X, Y, Z axes (in the order they appear in the header)
-- **At least 1 text column** — the column with the highest ratio of unique values becomes the **UID**; the next text column becomes the **Classification**
-- **A header row** — column names are used for axis labels and HUD display
+- **At least 2 numeric columns** — with exactly 2, the dataset renders as a 2D flat plane (Z synthesized as 0). With 3 or more, the first three (in header order) become the default X/Y/Z — see **7.4 Manual Axis Mapping** below to change this
+- **At least 1 text column** — the column with the highest ratio of unique values becomes the **UID**; the next text column becomes the **Classification**. Any further text columns are captured as point metadata and shown when hovering a point
+- **A header row** — column names are used for axis labels, dropdown options, and HUD display
 
 ### 7.2 Example
 
@@ -321,24 +321,34 @@ In this example:
 3. The parser auto-detects column types and validates the shape.
 4. On success, the grid scale, axis labels, HUD labels, and rendered points all update together.
 
-### 7.4 Error Handling
+### 7.4 Manual Axis Mapping
+
+If a loaded dataset has more than 2 numeric columns, an **Axis Mapping** section appears in the Data panel with three dropdowns — X, Y, and Z. Each lists every numeric column detected in the file.
+
+- Changing X or Y immediately re-renders the point cloud using the newly selected column — no re-upload needed, since the original parsed rows are retained in memory
+- The Z dropdown includes a **None (2D)** option — selecting it flattens the view to a 2D plane (Z synthesized as 0), regardless of how many numeric columns the file actually has
+- Axis labels, the Value filter panel, and the Point Analysis HUD all update to reflect the active mapping
+
+> **Note:** With exactly 2 numeric columns, the Axis Mapping section doesn't appear — there's nothing to choose between, since both columns are already in use.
+
+### 7.5 Error Handling
 
 If the file fails to load, you will see a specific error message:
 
 | Error | Cause |
 |-------|-------|
 | Empty file | The file has no header row or no data rows |
-| Wrong number of numeric columns | The CSV does not have exactly 3 numeric columns |
+| Not enough numeric columns | The CSV has fewer than 2 numeric columns |
 | No text/label columns found | The CSV lacks text columns for UID and Classification |
 | No valid data rows | Every row had missing or invalid numeric values |
 | File read error | The browser could not read the file |
 
 > **Partial load banner:** If your CSV loads but some rows are skipped due to missing or invalid numeric values, a red banner appears showing which row numbers were excluded. The valid rows still render — you do not need to reload the file.
 
-### 7.5 Known Limitations
+### 7.6 Known Limitations
 
-- Column order determines axis assignment. There is currently no manual override UI.
-- Only the first two text columns are used (UID and Classification). Additional text columns are ignored.
+- Manual axis mapping only appears once a dataset has more than 2 numeric columns — see **7.4**.
+- No manual override for which text column becomes UID vs. Classification — this is auto-detected by uniqueness ratio, though additional text columns beyond these two are captured as metadata rather than ignored (see **7.1**).
 - Datasets are held in memory only — reloading the page returns to the bundled default dataset.
 
 ---

@@ -13,6 +13,10 @@ import { useSceneTheme } from "../hooks/useSceneTheme";
 // Axis line + arrowhead styling.
 const AXIS_WIDTH = 2;
 const ARROW_LEN = 0.16;
+// Distance beyond the axis endpoint where the title label sits.
+// Increased from the previous 0.35 spacing to reduce collisions with
+// longer user-provided CSV column names (for example: "bytes_per_pkt").
+const LABEL_PADDING = 0.6;
 const ARROW_RADIUS = 0.045;
 const AXIS_TITLE_FONT = 0.18;
 
@@ -111,7 +115,7 @@ function axisDefs(zx: number, zy: number, zz: number): AxisDef[] {
       ],
       arrowPos: [MAX + ARROW_LEN / 2, zy, zz],
       arrowRot: [0, 0, -Math.PI / 2],
-      titlePos: [MAX + 0.35, zy, zz],
+      titlePos: [MAX + LABEL_PADDING, zy, zz],
       tickPos: (p) => [p, zy, zz],
       markEnd: [0, -MARK_LEN, 0],
       labelPos: [0, -LABEL_OFFSET, 0],
@@ -124,7 +128,7 @@ function axisDefs(zx: number, zy: number, zz: number): AxisDef[] {
       ],
       arrowPos: [zx, MAX + ARROW_LEN / 2, zz],
       arrowRot: [0, 0, 0],
-      titlePos: [zx, MAX + 0.35, zz],
+      titlePos: [zx, MAX + LABEL_PADDING, zz],
       tickPos: (p) => [zx, p, zz],
       markEnd: [-MARK_LEN, 0, 0],
       labelPos: [-LABEL_OFFSET - 0.05, 0, 0],
@@ -137,7 +141,7 @@ function axisDefs(zx: number, zy: number, zz: number): AxisDef[] {
       ],
       arrowPos: [zx, zy, MAX + ARROW_LEN / 2],
       arrowRot: [Math.PI / 2, 0, 0],
-      titlePos: [zx, zy, MAX + 0.35],
+      titlePos: [zx, zy, MAX + LABEL_PADDING],
       tickPos: (p) => [zx, zy, p],
       markEnd: [0, -MARK_LEN, 0],
       labelPos: [0, -LABEL_OFFSET, 0],
@@ -160,7 +164,7 @@ export function Axes() {
   const axisLabels = useStore((state) => state.axisLabels);
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const tickDensity = useStore((state) => state.tickDensity);
-  const datasetSchema = useStore((state) => state.datasetSchema);
+  const columnMapping = useStore((state) => state.columnMapping);
 
   const ticks = useMemo(
     () => ({
@@ -171,13 +175,13 @@ export function Axes() {
     [DISPLAY_RANGE, CENTER, SCALE, tickDensity],
   );
 
-  // 2D datasets (exactly 2 numeric columns) have no real Z column —
-  // parseCSV.ts synthesizes z=0 for every point, but drawing a Z axis
-  // for a dimension that doesn't exist in the data would be
-  // misleading. Filtering it out of `axes` here means the line, arrow,
-  // title, and ticks below all skip Z automatically — nothing else in
-  // this file needs its own dimension check.
-  const is2D = datasetSchema?.dimension === 2;
+  // Hide the Z axis whenever no Z column is currently selected. This
+  // includes both datasets that have no Z dimension and datasets that
+  // the user has intentionally flattened by choosing "None" for Z.
+  // Filtering it out of `axes` here means the line, arrow, title, and
+  // ticks below all skip Z automatically — nothing else in this file
+  // needs its own dimension check.
+  const is2D = columnMapping?.z == null;
   const axes = useMemo(() => {
     const all = axisDefs(ZERO_RENDER.x, ZERO_RENDER.y, ZERO_RENDER.z);
     return is2D ? all.filter((ax) => ax.key !== "z") : all;

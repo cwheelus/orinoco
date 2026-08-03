@@ -177,13 +177,15 @@ function App() {
     // screen if this attempt succeeds cleanly.
     setLoadError(null);
     try {
-      const { points, mapping, schema, metadata, skippedRows } =
+      const { rows, points, mapping, schema, metadata, skippedRows } =
         await parseCSV(file);
       setDataPoints(
         points,
         { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
         schema,
         metadata,
+        rows,
+        mapping,
       );
       if (skippedRows.length > 0) {
         // Not a hard failure — the file loaded, just with some rows
@@ -235,12 +237,14 @@ function App() {
       type: "text/csv",
     });
     parseCSV(file)
-      .then(({ points, mapping, schema, metadata }) =>
+      .then(({ rows, points, mapping, schema, metadata }) =>
         setDataPoints(
           points,
           { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
           schema,
           metadata,
+          rows,
+          mapping,
         ),
       )
       .catch((err) =>

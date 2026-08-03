@@ -6,7 +6,11 @@ import {
   type OctantSign,
 } from "../lib/gridSpace";
 import type { DataPoint } from "../types";
-import type { DatasetSchema } from "../lib/parseCSV";
+import {
+  type DatasetSchema,
+  type ColumnMapping,
+  buildPoints,
+} from "../lib/parseCSV";
 export type { ScalingMode, OctantSign };
 
 // The analyst's typed ± bound per axis for "custom" scaling, kept as raw
@@ -136,6 +140,16 @@ interface VisualizerState {
   // lib/parseCSV.ts's ParseResult.metadata for the full contract.
   // null until the first dataset loads.
   pointMetadata: Record<string, Record<string, string>> | null;
+  // Original parsed CSV rows for the active dataset, retained so axis
+  // selections can be changed without reparsing or re-uploading the
+  // file. null until the first dataset loads. See setColumnMapping.
+  rawRows: Record<string, string>[] | null;
+  // Which real column is currently mapped to uid/className/x/y/z.
+  // Defaults to parseCSV's auto-detected mapping (first 2/3 numeric
+  // columns); overridden via setColumnMapping when the analyst picks
+  // axes manually in the Data panel. null until the first dataset
+  // loads.
+  columnMapping: ColumnMapping | null;
   // The point in 3D space the camera currently orbits around and looks
   // at. Read by CameraRig.tsx (for WASD movement math) and by
   // OrbitControls in App.tsx (for mouse-drag rotation target).
@@ -233,7 +247,14 @@ interface VisualizerState {
     labels: AxisLabels,
     schema: DatasetSchema,
     metadata: Record<string, Record<string, string>>,
+    rows: Record<string, string>[],
+    mapping: ColumnMapping,
   ) => void;
+  // Rebuilds points/metadata from the retained rawRows using a new
+  // column mapping — no reparse or re-upload needed. Called from the
+  // Data panel's X/Y/Z axis dropdowns. No-ops (returns state
+  // unchanged) if no dataset has been loaded yet.
+  setColumnMapping: (mapping: ColumnMapping) => void;
   // Updates the pivot. Called from PointCloud.tsx's onClick handler.
   setPivot: (p: [number, number, number]) => void;
   // Updates hoveredPoint. Called from PointCloud.tsx's onPointerOver/
@@ -282,6 +303,8 @@ export const useStore = create<VisualizerState>((set) => ({
   // No dataset schema until the first CSV loads (see setDataPoints).
   datasetSchema: null,
   pointMetadata: null,
+  rawRows: null,
+  columnMapping: null,
   // Starting pivot: the world origin, per the project spec — the
   // camera should default to orbiting (0,0,0) until a point is clicked.
   pivot: [0, 0, 0],
@@ -316,12 +339,21 @@ export const useStore = create<VisualizerState>((set) => ({
   customBounds: EMPTY_CUSTOM_BOUNDS,
   // Default tick granularity — ~10 per side (Axes.tsx nice-rounds it).
   tickDensity: 10,
-  setDataPoints: (dataPoints, axisLabels, datasetSchema, pointMetadata) =>
+  setDataPoints: (
+    dataPoints,
+    axisLabels,
+    datasetSchema,
+    pointMetadata,
+    rawRows,
+    columnMapping,
+  ) =>
     set((state) => ({
       dataPoints,
       axisLabels,
       datasetSchema,
       pointMetadata,
+      rawRows,
+      columnMapping,
       // Recompute against the CURRENT scaling mode/bounds so a loaded CSV
       // respects whatever scaling the analyst has selected. Custom bounds
       // are kept (not reset) — they're a display preference, and any that
@@ -337,6 +369,47 @@ export const useStore = create<VisualizerState>((set) => ({
       hiddenClasses: [],
       numericFilters: NO_NUMERIC_FILTERS,
     })),
+  setColumnMapping: (mapping) =>
+    set((state) => {
+      if (!state.rawRows || !state.datasetSchema) return state;
+      const rebuilt = buildPoints(state.rawRows, state.datasetSchema, mapping);
+      const axisLabels: AxisLabels = {
+        x: mapping.x,
+        y: mapping.y,
+        z: mapping.z ?? "Z",
+      };
+      // Axis mapping can change which rows produce valid points, so
+      // rebuild the available class list from the rebuilt points and
+      // discard hidden classes that no longer exist.
+      // classColorOverrides is intentionally preserved because colors
+      // are keyed by class name rather than axis selection.
+      const newAvailableClasses = uniqueClasses(rebuilt.points);
+      const availableClassSet = new Set(newAvailableClasses);
+      const prunedHiddenClasses = state.hiddenClasses.filter((c) =>
+        availableClassSet.has(c),
+      );
+
+      return {
+        dataPoints: rebuilt.points,
+        pointMetadata: rebuilt.metadata,
+        columnMapping: mapping,
+        axisLabels,
+        availableClasses: newAvailableClasses,
+        hiddenClasses: prunedHiddenClasses,
+        // Numeric filters, isolated octant, and pivot refer to the
+        // previous axis mapping and are reset when the plotted
+        // columns change.
+        gridSpace: gridSpaceFor({
+          ...state,
+          dataPoints: rebuilt.points,
+          isolatedOctant: null,
+        }),
+        isolatedOctant: null,
+        pivot: [0, 0, 0],
+        hoveredPoint: null,
+        numericFilters: NO_NUMERIC_FILTERS,
+      };
+    }),
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
