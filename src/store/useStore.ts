@@ -378,15 +378,27 @@ export const useStore = create<VisualizerState>((set) => ({
         y: mapping.y,
         z: mapping.z ?? "Z",
       };
+      // Axis mapping can change which rows produce valid points, so
+      // rebuild the available class list from the rebuilt points and
+      // discard hidden classes that no longer exist.
+      // classColorOverrides is intentionally preserved because colors
+      // are keyed by class name rather than axis selection.
+      const newAvailableClasses = uniqueClasses(rebuilt.points);
+      const availableClassSet = new Set(newAvailableClasses);
+      const prunedHiddenClasses = state.hiddenClasses.filter((c) =>
+        availableClassSet.has(c),
+      );
+
       return {
         dataPoints: rebuilt.points,
         pointMetadata: rebuilt.metadata,
         columnMapping: mapping,
         axisLabels,
-        // Axis mapping changed — old numeric filters/isolation/pivot
-        // referred to the previous columns' values and no longer
-        // apply. Classes (hiddenClasses, classColorOverrides) are
-        // unaffected by axis choice, so intentionally left alone.
+        availableClasses: newAvailableClasses,
+        hiddenClasses: prunedHiddenClasses,
+        // Numeric filters, isolated octant, and pivot refer to the
+        // previous axis mapping and are reset when the plotted
+        // columns change.
         gridSpace: gridSpaceFor({
           ...state,
           dataPoints: rebuilt.points,
