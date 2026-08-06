@@ -3,6 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
 import { GRID_MAX } from "../lib/gridSpace";
 import { cameraOrientation } from "../lib/cameraSync";
+import { config } from "../lib/config";
 import * as THREE from "three";
 
 // Zoom guard rails — the camera-to-pivot distance is clamped to this
@@ -10,30 +11,32 @@ import * as THREE from "three";
 // by the W/S keys below. Zoom-in is intentionally generous (a small
 // floor, so you can get right up to a point without passing through it);
 // zoom-out is capped so the grid can't shrink to an unusable speck.
-export const MIN_ZOOM_DIST = 0.15;
-export const MAX_ZOOM_DIST = 18;
+// Both come from config.json's `camera` section.
+export const MIN_ZOOM_DIST = config.camera.minZoomDistance;
+export const MAX_ZOOM_DIST = config.camera.maxZoomDistance;
 
 // How far the pivot may be pushed past the grid walls via arrow/pan
-// traversal: 50% of the box's half-extent beyond each side (so ±3 for the
-// ±2 box). Keeps the pivot from wandering off into empty space.
-const PIVOT_LIMIT = GRID_MAX * 1.5;
+// traversal, as a multiple of the box's half-extent (the default 1.5
+// gives ±3 for the ±2 box). Keeps the pivot from wandering off into
+// empty space.
+const PIVOT_LIMIT = GRID_MAX * config.camera.pivotLimitFactor;
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
 
 // How fast the camera moves toward/away from the pivot when zooming (W/S)
-const MOVE_SPEED = 15;
+const MOVE_SPEED = config.camera.zoomSpeed;
 // How fast the camera orbits around the pivot when rotating (A/D)
-const ROTATION_SPEED = 1.5;
+const ROTATION_SPEED = config.camera.orbitSpeed;
 // How fast the arrow/space/shift keys traverse the pivot through the
 // scene, in render-space units per second (the box is 4 units wide).
-const PIVOT_SPEED = 1.5;
+const PIVOT_SPEED = config.camera.pivotSpeed;
 
 // World units panned per screen pixel, at PAN_REFERENCE_DISTANCE from the
 // pivot. Scaled by actual camera-to-pivot distance on every drag so
 // panning feels consistent whether zoomed in tight or pulled back.
-const PAN_REFERENCE_DISTANCE = 5;
-const PAN_SPEED_AT_REFERENCE = 0.003;
+const PAN_REFERENCE_DISTANCE = config.camera.panReferenceDistance;
+const PAN_SPEED_AT_REFERENCE = config.camera.panSpeedAtReference;
 
 // Shared axis vector, reused instead of allocating (0,1,0) fresh anywhere
 // it's needed (orbit rotation axis).

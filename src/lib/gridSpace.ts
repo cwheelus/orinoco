@@ -1,4 +1,5 @@
 import type { DataPoint } from "../types";
+import { config } from "./config";
 
 /**
  * gridSpace.ts
@@ -10,20 +11,22 @@ import type { DataPoint } from "../types";
  * stores the result for components to read) — so the grid always
  * reflects whatever CSV is currently loaded.
  *
- * GRID_MIN/GRID_MAX/TICK_STEP stay as true constants — the physical
- * box size (-2..2) and tick spacing are visual/layout choices, not
- * something that should change per-dataset.
+ * GRID_MIN/GRID_MAX/TICK_STEP do not vary per-dataset — the physical
+ * box size (-2..2 by default) and tick spacing are deployment-level
+ * choices, so they come from config.json's `grid` section rather than
+ * from the data.
  */
 
-export const GRID_MIN = -2;
-export const GRID_MAX = 2;
-export const TICK_STEP = 0.5;
+export const GRID_MIN = config.grid.boxMin;
+export const GRID_MAX = config.grid.boxMax;
+export const TICK_STEP = config.grid.planeStep;
 
-// Grid margin: each axis extends 10% beyond the data's extremes, so no
-// point ever sits on a wall. Per the spec's worked example: the tallest
-// invel_pps value 3676.470588 * 1.1 = 4044.1176 rounds up (outward) to a
-// wall value of 4045.
-const MARGIN = 0.1;
+// Grid margin: each axis extends this fraction beyond the data's
+// extremes, so no point ever sits on a wall. Per the spec's worked
+// example, at the default 0.1: the tallest invel_pps value
+// 3676.470588 * 1.1 = 4044.1176 rounds up (outward) to a wall value
+// of 4045.
+const MARGIN = config.grid.rangeMargin;
 
 export interface AxisRange {
   min: number;

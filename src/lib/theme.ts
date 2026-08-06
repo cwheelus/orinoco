@@ -137,6 +137,23 @@ export const ERROR = {
   label: "text-red-400 light:text-red-600",
 };
 
+// Warning tier — a load that SUCCEEDED with some rows excluded. Amber
+// rather than ERROR's red, since styling a partial success identically
+// to an outright failure trained people to ignore both.
+export const WARNING = {
+  bg: "bg-amber-950/80 backdrop-blur-md border-l-2 border-amber-500 ring-1 ring-white/10 shadow-2xl light:bg-amber-50 light:ring-black/10",
+  label: "text-amber-400 light:text-amber-600",
+};
+
+// Per-severity accent for Console rows. Keyed by the Severity union in
+// lib/errorCodes.ts, so a new severity there is a type error here until
+// it's given a color rather than silently rendering unstyled.
+export const SEVERITY_TEXT = {
+  error: "text-red-400 light:text-red-600",
+  warning: "text-amber-400 light:text-amber-600",
+  info: "text-sky-400 light:text-sky-600",
+};
+
 export const KBD = {
   // A single keyboard-key chip (used for every WASD/arrow/Spc/Shift
   // key in the bottom control guide). Defined once here — but see

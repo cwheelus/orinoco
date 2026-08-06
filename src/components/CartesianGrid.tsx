@@ -7,10 +7,12 @@ import {
 } from "../lib/gridSpace";
 import { useStore } from "../store/useStore";
 import { useSceneTheme } from "../hooks/useSceneTheme";
+import { config } from "../lib/config";
 
-// Opacity is a depth-cue design choice independent of theme.
-const PLANE_OPACITY = 0.35;
-const BOX_OPACITY = 0.4;
+// Opacity is a depth-cue design choice independent of theme — see
+// config.json's `grid` section.
+const PLANE_OPACITY = config.grid.planeOpacity;
+const BOX_OPACITY = config.grid.boxOpacity;
 
 function range(min: number, max: number, step: number): number[] {
   const result: number[] = [];
