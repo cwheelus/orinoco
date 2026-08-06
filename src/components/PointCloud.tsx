@@ -5,21 +5,25 @@ import { useStore } from "../store/useStore";
 import type { DataPoint, NumericFilter } from "../store/useStore";
 import { getClassColor } from "../lib/classColors";
 import { inOctant } from "../lib/gridSpace";
+import { config } from "../lib/config";
 
-// Auto point-size model. Positions are normalized into the fixed -2..2
-// box, so on-screen crowding is driven by how MANY points share that
-// fixed volume — i.e. by point COUNT. So the automatic radius shrinks
-// with count (~1/sqrt(N)): a sparse dataset gets big, easy-to-see points;
-// a dense 10k/100k cloud gets small ones so points stay distinguishable
+// Auto point-size model, tunable via config.json's `points` section.
+// Positions are normalized into the fixed render box, so on-screen
+// crowding is driven by how MANY points share that fixed volume — i.e.
+// by point COUNT. So the automatic radius shrinks with count
+// (~1/sqrt(N)): a sparse dataset gets big, easy-to-see points; a dense
+// 10k/100k cloud gets small ones so points stay distinguishable
 // instead of merging into a blob.
-const REFERENCE_COUNT = 200; // point count at which the auto radius === BASE_RADIUS
-const BASE_RADIUS = 0.045; // auto radius at REFERENCE_COUNT points
-const AUTO_MIN_RADIUS = 0.0015; // floor for the AUTO size (before the user multiplier)
-const AUTO_MAX_RADIUS = 0.12; // ceiling for the AUTO size
-// Hard clamp on the FINAL radius after the user's slider multiplier.
-const HARD_MIN_RADIUS = 0.0008;
-const HARD_MAX_RADIUS = 0.3;
-const SPHERE_SEGMENTS = 8;
+const {
+  referenceCount: REFERENCE_COUNT, // point count at which the auto radius === BASE_RADIUS
+  baseRadius: BASE_RADIUS, // auto radius at REFERENCE_COUNT points
+  autoMinRadius: AUTO_MIN_RADIUS, // floor for the AUTO size (before the user multiplier)
+  autoMaxRadius: AUTO_MAX_RADIUS, // ceiling for the AUTO size
+  // Hard clamp on the FINAL radius after the user's slider multiplier.
+  hardMinRadius: HARD_MIN_RADIUS,
+  hardMaxRadius: HARD_MAX_RADIUS,
+  sphereSegments: SPHERE_SEGMENTS,
+} = config.points;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v));

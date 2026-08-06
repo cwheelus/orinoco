@@ -11,7 +11,58 @@ import {
   type ColumnMapping,
   buildPoints,
 } from "../lib/parseCSV";
+import { config } from "../lib/config";
+import { CODES, type ErrorCode, type Severity } from "../lib/errorCodes";
+import { distinctReasons, type SkippedRow } from "../lib/parseCSV";
 export type { ScalingMode, OctantSign };
+
+// One diagnostic shown in the Console page (and, for errors/warnings,
+// echoed in the HUD banner). Built by pushLog from an ErrorCode plus a
+// message, so the code/severity/title can never drift from the registry
+// in lib/errorCodes.ts.
+export interface LogEntry {
+  // Monotonic id — used as the React key and to identify the newest
+  // entry. Not an array index, since the buffer is trimmed from the
+  // front once it fills.
+  id: number;
+  timestamp: number;
+  code: string;
+  severity: Severity;
+  title: string;
+  message: string;
+  // Extra lines shown only in the Console — the banner stays compact.
+  detail?: string[];
+}
+
+// Ring-buffer cap. Without one, a session that loads many malformed
+// files would grow this array unboundedly; the oldest entries are the
+// least useful, so they're the ones dropped.
+const MAX_LOG_ENTRIES = config.console.maxEntries;
+// How many individual excluded rows get listed before the detail is
+// summarized instead. A 50k-row file with a bad column would otherwise
+// try to render 50k lines.
+const MAX_LISTED_ROWS = config.console.maxListedRows;
+
+let nextLogId = 1;
+
+/**
+ * Formats a skip list into console detail lines: the individual rows up
+ * to MAX_LISTED_ROWS, then a per-reason summary once it's longer than
+ * that. Shared by the dataset and color-file paths so both read the
+ * same way.
+ */
+export function formatSkippedRows(skipped: SkippedRow[]): string[] {
+  if (skipped.length <= MAX_LISTED_ROWS) {
+    return skipped.map((s) => `Row ${s.row}: ${s.reason}`);
+  }
+  return [
+    ...skipped
+      .slice(0, MAX_LISTED_ROWS)
+      .map((s) => `Row ${s.row}: ${s.reason}`),
+    `…and ${skipped.length - MAX_LISTED_ROWS} more. Totals by cause:`,
+    ...distinctReasons(skipped),
+  ];
+}
 
 // The analyst's typed ± bound per axis for "custom" scaling, kept as raw
 // text-box strings (so an in-progress "-" or "" doesn't coerce to 0) —
@@ -68,14 +119,11 @@ export interface AxisLabels {
   z: string;
 }
 
-// Placeholder labels matching the bundled sample CSV's columns — shown
-// for the brief moment before App.tsx's mount-time load replaces
-// them with that file's own detected column names.
-const DEFAULT_AXIS_LABELS: AxisLabels = {
-  x: "orig_bytes",
-  y: "invel_pps",
-  z: "invel_bpp",
-};
+// Placeholder labels shown for the brief moment before App.tsx's
+// mount-time load replaces them with the loaded file's own detected
+// column names. Defaults match the bundled sample CSV's columns; see
+// config.json's defaults.axisLabels.
+const DEFAULT_AXIS_LABELS: AxisLabels = { ...config.defaults.axisLabels };
 
 // A single numeric filter on one axis. "off" means the axis isn't
 // filtered. "between" is an inclusive range using BOTH value (min) and
@@ -287,6 +335,19 @@ interface VisualizerState {
   // colors.csv file (see lib/parseColorsCSV.ts), so an N-row file
   // becomes one store update instead of N calls to setClassColor.
   setClassColorOverrides: (overrides: Record<string, string>) => void;
+  // Every diagnostic raised this session, oldest first. Drives the
+  // Console page; the HUD banner shows only the newest non-info entry.
+  // Lives in the store (not App-local state) precisely because two
+  // separate components need to read it — the old single-string
+  // useState could not be shared, so each new message destroyed the
+  // previous one.
+  logEntries: LogEntry[];
+  // Appends a diagnostic. Takes the ErrorCode registry entry rather
+  // than loose strings, so code/severity/title always agree with
+  // lib/errorCodes.ts.
+  pushLog: (code: ErrorCode, message: string, detail?: string[]) => void;
+  // Empties the console. Called from the Console page's Clear button.
+  clearLog: () => void;
 }
 
 export const useStore = create<VisualizerState>((set) => ({
@@ -297,7 +358,7 @@ export const useStore = create<VisualizerState>((set) => ({
   dataPoints: [],
   gridSpace: computeGridSpace(
     [],
-    scalingConfig("normalized", EMPTY_CUSTOM_BOUNDS),
+    scalingConfig(config.defaults.scalingMode, EMPTY_CUSTOM_BOUNDS),
   ),
   axisLabels: DEFAULT_AXIS_LABELS,
   // No dataset schema until the first CSV loads (see setDataPoints).
@@ -310,16 +371,17 @@ export const useStore = create<VisualizerState>((set) => ({
   pivot: [0, 0, 0],
   // Nothing is hovered when the app first loads.
   hoveredPoint: null,
-  // Grid starts visible by default.
-  gridVisible: true,
-  // Dark mode is the default, matching the app's original (only)
+  // Startup state — all from config.json's `defaults` section.
+  // Grid starts visible.
+  gridVisible: config.defaults.gridVisible,
+  // Dark mode ships as the default, matching the app's original (only)
   // appearance before light mode existed.
-  darkMode: true,
+  darkMode: config.defaults.darkMode,
   // Orbit is the default drag behavior — matches prior versions where
   // drag-to-rotate was the only option.
-  activeTool: "orbit",
+  activeTool: config.defaults.activeTool,
   // Point size starts at the automatic size (no manual scaling).
-  pointSizeScale: 1,
+  pointSizeScale: config.defaults.pointSizeScale,
   // Filters start fully open — every class shown, no numeric filtering.
   // Empty until the sample CSV loads on mount (setDataPoints fills it).
   availableClasses: [],
@@ -335,10 +397,10 @@ export const useStore = create<VisualizerState>((set) => ({
   // Full grid by default — no octant isolated.
   isolatedOctant: null,
   // Scaling starts in per-axis auto-normalized mode, no custom bounds.
-  scalingMode: "normalized",
+  scalingMode: config.defaults.scalingMode,
   customBounds: EMPTY_CUSTOM_BOUNDS,
-  // Default tick granularity — ~10 per side (Axes.tsx nice-rounds it).
-  tickDensity: 10,
+  // Default tick granularity, in ticks per side (Axes.tsx nice-rounds it).
+  tickDensity: config.defaults.tickDensity,
   setDataPoints: (
     dataPoints,
     axisLabels,
@@ -376,7 +438,9 @@ export const useStore = create<VisualizerState>((set) => ({
       const axisLabels: AxisLabels = {
         x: mapping.x,
         y: mapping.y,
-        z: mapping.z ?? "Z",
+        // No column mapped to Z (a 2D dataset, or Z set to "None") —
+        // fall back to the configured placeholder name.
+        z: mapping.z ?? config.defaults.unmappedAxisLabel,
       };
       // Axis mapping can change which rows produce valid points, so
       // rebuild the available class list from the rebuilt points and
@@ -389,7 +453,31 @@ export const useStore = create<VisualizerState>((set) => ({
         availableClassSet.has(c),
       );
 
+      // Remapping axes can drop rows that the PREVIOUS mapping accepted
+      // (a column that parsed cleanly as X may have gaps when used as
+      // Z). That used to happen silently — the point count would change
+      // with no explanation. Log it like any other exclusion.
+      const remapLog: LogEntry[] = [
+        {
+          id: nextLogId++,
+          timestamp: Date.now(),
+          code: CODES.CSV_REMAPPED.code,
+          severity: CODES.CSV_REMAPPED.severity,
+          title: CODES.CSV_REMAPPED.title,
+          message: `Axes remapped to ${mapping.x} / ${mapping.y} / ${mapping.z ?? "none"} — ${rebuilt.points.length} point(s) plotted.`,
+          detail:
+            rebuilt.skippedRows.length > 0
+              ? formatSkippedRows(rebuilt.skippedRows)
+              : undefined,
+        },
+      ];
+      const nextLog = [...state.logEntries, ...remapLog];
+
       return {
+        logEntries:
+          nextLog.length > MAX_LOG_ENTRIES
+            ? nextLog.slice(nextLog.length - MAX_LOG_ENTRIES)
+            : nextLog,
         dataPoints: rebuilt.points,
         pointMetadata: rebuilt.metadata,
         columnMapping: mapping,
@@ -469,4 +557,26 @@ export const useStore = create<VisualizerState>((set) => ({
     })),
   resetClassColors: () => set({ classColorOverrides: {} }),
   setClassColorOverrides: (classColorOverrides) => set({ classColorOverrides }),
+  logEntries: [],
+  pushLog: (code, message, detail) =>
+    set((state) => {
+      const entry: LogEntry = {
+        id: nextLogId++,
+        timestamp: Date.now(),
+        code: code.code,
+        severity: code.severity,
+        title: code.title,
+        message,
+        detail: detail && detail.length > 0 ? detail : undefined,
+      };
+      const next = [...state.logEntries, entry];
+      // Trim from the front once past the cap, keeping the newest.
+      return {
+        logEntries:
+          next.length > MAX_LOG_ENTRIES
+            ? next.slice(next.length - MAX_LOG_ENTRIES)
+            : next,
+      };
+    }),
+  clearLog: () => set({ logEntries: [] }),
 }));

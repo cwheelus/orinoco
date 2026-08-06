@@ -1,0 +1,102 @@
+{
+  "data": {
+    "sampleDataset": "",
+    "acceptedFileTypes": ".csv",
+    "numericThreshold": 0.9,
+    "typeSampleSize": 50,
+    "minNumericColumns": 2,
+    "colorFile": {
+      "classNameHeaders": [
+        "className",
+        "class",
+        "name"
+      ],
+      "colorHeaders": [
+        "color",
+        "colour",
+        "hex"
+      ],
+      "colorPattern": "^#[0-9a-fA-F]{6}$"
+    }
+  },
+  "grid": {
+    "boxMin": -2,
+    "boxMax": 2,
+    "planeStep": 0.5,
+    "rangeMargin": 0.1,
+    "planeOpacity": 0.35,
+    "boxOpacity": 0.4
+  },
+  "points": {
+    "referenceCount": 200,
+    "baseRadius": 0.045,
+    "autoMinRadius": 0.0015,
+    "autoMaxRadius": 0.12,
+    "hardMinRadius": 0.0008,
+    "hardMaxRadius": 0.3,
+    "sphereSegments": 8
+  },
+  "axes": {
+    "lineWidth": 2,
+    "arrowLength": 0.16,
+    "arrowRadius": 0.045,
+    "arrowSegments": 12,
+    "titleFontSize": 0.18,
+    "titlePadding": 0.6,
+    "referenceDistance": 8,
+    "labelFontSize": 0.085,
+    "markLength": 0.05,
+    "labelOffset": 0.17,
+    "labelOffsetYExtra": 0.05,
+    "minScreenScale": 0.15,
+    "maxScreenScale": 5,
+    "exponentialAbove": 100000,
+    "exponentialBelow": 0.001,
+    "decimalPlaces": 3
+  },
+  "camera": {
+    "initialPosition": [
+      5,
+      4,
+      5
+    ],
+    "minZoomDistance": 0.15,
+    "maxZoomDistance": 18,
+    "pivotLimitFactor": 1.5,
+    "zoomSpeed": 15,
+    "orbitSpeed": 1.5,
+    "pivotSpeed": 1.5,
+    "panReferenceDistance": 5,
+    "panSpeedAtReference": 0.003
+  },
+  "defaults": {
+    "darkMode": true,
+    "gridVisible": true,
+    "activeTool": "orbit",
+    "scalingMode": "normalized",
+    "pointSizeScale": 1,
+    "tickDensity": 10,
+    "axisLabels": {
+      "x": "orig_bytes",
+      "y": "invel_pps",
+      "z": "invel_bpp"
+    },
+    "unmappedAxisLabel": "Z"
+  },
+  "limits": {
+    "pointSizeSlider": {
+      "min": 0.25,
+      "max": 4,
+      "step": 0.05
+    },
+    "tickDensitySlider": {
+      "min": 3,
+      "max": 30,
+      "step": 1
+    }
+  },
+  "console": {
+    "maxEntries": 200,
+    "maxListedRows": 50
+  }
+}

@@ -9,30 +9,46 @@ import {
 } from "../lib/gridSpace";
 import { useStore } from "../store/useStore";
 import { useSceneTheme } from "../hooks/useSceneTheme";
+import { config } from "../lib/config";
 
-// Axis line + arrowhead styling.
-const AXIS_WIDTH = 2;
-const ARROW_LEN = 0.16;
-// Distance beyond the axis endpoint where the title label sits.
-// Increased from the previous 0.35 spacing to reduce collisions with
-// longer user-provided CSV column names (for example: "bytes_per_pkt").
-const LABEL_PADDING = 0.6;
-const ARROW_RADIUS = 0.045;
-const AXIS_TITLE_FONT = 0.18;
+// Axis line + arrowhead styling, and the tick model below — all tunable
+// via config.json's `axes` section.
+const {
+  lineWidth: AXIS_WIDTH,
+  arrowLength: ARROW_LEN,
+  arrowRadius: ARROW_RADIUS,
+  arrowSegments: ARROW_SEGMENTS,
+  titleFontSize: AXIS_TITLE_FONT,
+  // Distance beyond the axis endpoint where the title label sits.
+  // Raised from an earlier 0.35 to reduce collisions with longer
+  // user-provided CSV column names (for example: "bytes_per_pkt").
+  titlePadding: LABEL_PADDING,
+  // Tick model. Ticks are a FIXED set of nice numbers spanning the whole
+  // axis [-M, M] (so numbers always run to the axis ends, with no gaps),
+  // at ~tickDensity per side. They do NOT subdivide on zoom — so zooming
+  // in simply spreads them out on screen and pushes the outer ones off
+  // the edges (you see fewer), rather than piling on more. Their marks
+  // and numbers are scaled every frame by camera distance so they stay a
+  // constant size ON SCREEN instead of ballooning as you approach.
+  referenceDistance: REF_DIST, // camera distance at which the on-screen scale is 1
+  labelFontSize: LABEL_FONT, // tick-number font size at scale 1 (render units)
+  markLength: MARK_LEN, // tick-mark length at scale 1
+  labelOffset: LABEL_OFFSET, // number's offset off the axis at scale 1
+  labelOffsetYExtra: LABEL_OFFSET_Y_EXTRA, // Y's numbers sit beside the axis, so they need a little more room
+  minScreenScale: MIN_SCREEN_SCALE,
+  maxScreenScale: MAX_SCREEN_SCALE,
+} = config.axes;
 
-// Tick model. Ticks are a FIXED set of nice numbers spanning the whole
-// axis [-M, M] (so numbers always run to the axis ends, with no gaps),
-// at ~BASE_TICKS_PER_SIDE per side. They do NOT subdivide on zoom — so
-// zooming in simply spreads them out on screen and pushes the outer ones
-// off the edges (you see fewer), rather than piling on more. Their marks
-// and numbers are scaled every frame by camera distance so they stay a
-// constant size ON SCREEN instead of ballooning as you approach.
-const REF_DIST = 8; // camera distance at which the on-screen scale is 1
-const LABEL_FONT = 0.085; // tick-number font size at scale 1 (render units)
-const MARK_LEN = 0.05; // tick-mark length at scale 1
-const LABEL_OFFSET = 0.17; // number's offset off the axis at scale 1
-const MIN_SCREEN_SCALE = 0.15;
-const MAX_SCREEN_SCALE = 5;
+// Tick-number formatting thresholds: magnitudes at or above
+// EXPONENTIAL_ABOVE, or below EXPONENTIAL_BELOW, switch to scientific
+// notation rather than printing a wall of digits.
+const {
+  exponentialAbove: EXPONENTIAL_ABOVE,
+  exponentialBelow: EXPONENTIAL_BELOW,
+  decimalPlaces: DECIMAL_PLACES,
+} = config.axes;
+// Precomputed once: rounding to N decimals is round(v * 10^N) / 10^N.
+const DECIMAL_FACTOR = Math.pow(10, DECIMAL_PLACES);
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v));
@@ -51,8 +67,10 @@ function niceStep(raw: number): number {
 
 function formatTick(v: number): string {
   const a = Math.abs(v);
-  if (a !== 0 && (a >= 100000 || a < 0.001)) return v.toExponential(1);
-  return String(Math.round(v * 1000) / 1000);
+  if (a !== 0 && (a >= EXPONENTIAL_ABOVE || a < EXPONENTIAL_BELOW)) {
+    return v.toExponential(1);
+  }
+  return String(Math.round(v * DECIMAL_FACTOR) / DECIMAL_FACTOR);
 }
 
 interface Tick {
@@ -131,7 +149,7 @@ function axisDefs(zx: number, zy: number, zz: number): AxisDef[] {
       titlePos: [zx, MAX + LABEL_PADDING, zz],
       tickPos: (p) => [zx, p, zz],
       markEnd: [-MARK_LEN, 0, 0],
-      labelPos: [-LABEL_OFFSET - 0.05, 0, 0],
+      labelPos: [-LABEL_OFFSET - LABEL_OFFSET_Y_EXTRA, 0, 0],
     },
     {
       key: "z",
@@ -206,7 +224,7 @@ export function Axes() {
         <group key={ax.key}>
           <Line points={ax.line} color={scene.axis} lineWidth={AXIS_WIDTH} />
           <mesh position={ax.arrowPos} rotation={ax.arrowRot}>
-            <coneGeometry args={[ARROW_RADIUS, ARROW_LEN, 12]} />
+            <coneGeometry args={[ARROW_RADIUS, ARROW_LEN, ARROW_SEGMENTS]} />
             <meshBasicMaterial color={scene.axis} />
           </mesh>
           <Billboard position={ax.titlePos}>

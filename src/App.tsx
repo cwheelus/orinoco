@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
-import { useStore } from "./store/useStore";
+import { useStore, formatSkippedRows } from "./store/useStore";
 import { PointCloud } from "./components/PointCloud";
 import {
   CameraRig,
@@ -16,11 +16,24 @@ import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
 import { parseColorsCSV } from "./lib/parseColorsCSV";
 import { getClassColor } from "./lib/classColors";
-import { SURFACE, PANEL_APP, TEXT, ERROR, KBD } from "./lib/theme";
+import { SURFACE, PANEL_APP, TEXT, ERROR, WARNING, KBD } from "./lib/theme";
+import { config } from "./lib/config";
+import { appError, describeError, CODES } from "./lib/errorCodes";
 
-// The bundled sample dataset, imported as raw CSV text (Vite `?raw`). The
-// exact same parseCSV → setDataPoints path a user's uploaded CSV takes.
-import sampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
+// The bundled fallback dataset, imported as raw CSV text (Vite `?raw`)
+// so it ships inside the build with no network round-trip. Used only
+// when config.json's data.sampleDataset is blank — see the startup
+// effect below. Either way it takes the exact same parseCSV →
+// setDataPoints path a user's uploaded CSV does.
+import bundledSampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
+const BUNDLED_SAMPLE_NAME = "mixed-sign-sample.csv";
+
+// Path or URL of the dataset to load on startup. Blank = use the
+// bundled file above.
+const STARTUP_DATASET = config.data.sampleDataset.trim();
+
+// Where the camera sits before any user input.
+const INITIAL_CAMERA_POSITION = config.camera.initialPosition;
 
 /**
  * Orinoco Flow Visualizer - Main Application Entry
@@ -151,11 +164,29 @@ function App() {
   // #23's fix for marker lag.)
   const pivotMarkerRef = useRef<Group>(null);
 
-  // Transient, UI-only error state for a failed CSV load. Lives here
-  // (not in the Zustand store) since it's purely local presentation
-  // state — no other component needs to read or react to it, unlike
-  // pivot/hoveredPoint/dataPoints, which genuinely need to be shared.
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Diagnostics now live in the STORE rather than in a local
+  // useState<string>. Two reasons the old local slot couldn't work:
+  // the Console page (in Toolbar.tsx) needs to read the same records,
+  // and a single string could only ever hold one message — each new
+  // load destroyed the previous one.
+  const logEntries = useStore((state) => state.logEntries);
+  const pushLog = useStore((state) => state.pushLog);
+
+  // The banner shows only the newest ERROR or WARNING. Info entries
+  // (successful loads) are Console-only — surfacing those as a banner
+  // would mean a notification on every routine load.
+  // `dismissedLogId` lets the analyst close the banner without clearing
+  // the Console's record; a newer diagnostic has a higher id, so it
+  // reappears on the next problem rather than staying suppressed.
+  const [dismissedLogId, setDismissedLogId] = useState(0);
+  const activeAlert = useMemo(() => {
+    for (let i = logEntries.length - 1; i >= 0; i--) {
+      const entry = logEntries[i];
+      if (entry.severity === "info") continue;
+      return entry.id > dismissedLogId ? entry : null;
+    }
+    return null;
+  }, [logEntries, dismissedLogId]);
 
   // Handles a file selected via the Toolbar's paperclip button. Three
   // possible outcomes, each handled distinctly rather than collapsed
@@ -172,16 +203,16 @@ function App() {
   //     message (wrong column count, empty file, etc.) rather than a
   //     generic "something went wrong."
   const handleFileSelected = async (file: File) => {
-    // Clear any previous banner at the start of every new attempt, so
-    // a stale error/info message from a prior load doesn't linger on
-    // screen if this attempt succeeds cleanly.
-    setLoadError(null);
     try {
       const { rows, points, mapping, schema, metadata, skippedRows } =
         await parseCSV(file);
       setDataPoints(
         points,
-        { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
+        {
+          x: mapping.x,
+          y: mapping.y,
+          z: mapping.z ?? config.defaults.unmappedAxisLabel,
+        },
         schema,
         metadata,
         rows,
@@ -189,18 +220,33 @@ function App() {
       );
       if (skippedRows.length > 0) {
         // Not a hard failure — the file loaded, just with some rows
-        // excluded. Still worth surfacing so the analyst knows the
-        // point count doesn't necessarily match every row in their file.
-        setLoadError(
-          `Loaded with ${skippedRows.length} row(s) skipped (missing or invalid data): rows ${skippedRows.join(", ")}`,
+        // excluded. Logged as a WARNING so the banner shows it without
+        // implying the load failed. The per-row reasons go to the
+        // Console; the banner keeps the one-line count.
+        pushLog(
+          CODES.CSV_ROWS_SKIPPED,
+          `${file.name}: loaded ${points.length} point(s), excluded ${skippedRows.length} row(s).`,
+          formatSkippedRows(skippedRows),
+        );
+      } else {
+        pushLog(
+          CODES.CSV_LOADED,
+          `${file.name}: loaded ${points.length} point(s) from ${rows.length} row(s).`,
+          [
+            `Axes: ${mapping.x} / ${mapping.y} / ${mapping.z ?? "none (2D)"}`,
+            `Identity: ${mapping.uid} · Class: ${mapping.className}`,
+          ],
         );
       }
     } catch (err) {
-      // err is `unknown` by TypeScript's default catch typing — the
-      // instanceof check narrows it to Error before reading .message,
-      // with a generic fallback for the rare case something non-Error
-      // gets thrown (e.g. a raw string).
-      setLoadError(err instanceof Error ? err.message : "Failed to load CSV.");
+      // describeError narrows to the thrown AppError's registry entry,
+      // or APP-001 for anything uncoded — so nothing reaches the user
+      // without a code attached.
+      const { appCode, message, detail } = describeError(
+        err,
+        "Failed to load CSV.",
+      );
+      pushLog(appCode, `${file.name}: ${message}`, detail);
     }
   };
 
@@ -210,49 +256,134 @@ function App() {
   // Charles's original spec: colors are "set and changed from that
   // file," not via an in-app picker.
   const handleColorFileSelected = async (file: File) => {
-    setLoadError(null);
     try {
       const { overrides, skippedRows } = await parseColorsCSV(file);
       setClassColorOverrides(overrides);
+      const applied = Object.keys(overrides).length;
       if (skippedRows.length > 0) {
-        setLoadError(
-          `Color file loaded with ${skippedRows.length} row(s) skipped (missing or invalid): rows ${skippedRows.join(", ")}`,
+        pushLog(
+          CODES.CLR_ROWS_SKIPPED,
+          `${file.name}: applied ${applied} color override(s), excluded ${skippedRows.length} row(s).`,
+          formatSkippedRows(skippedRows),
+        );
+      } else {
+        pushLog(
+          CODES.CLR_LOADED,
+          `${file.name}: applied ${applied} color override(s).`,
+          Object.entries(overrides).map(([cls, hex]) => `${cls} → ${hex}`),
         );
       }
     } catch (err) {
-      setLoadError(
-        err instanceof Error ? err.message : "Failed to load color file.",
+      const { appCode, message, detail } = describeError(
+        err,
+        "Failed to load color file.",
       );
+      pushLog(appCode, `${file.name}: ${message}`, detail);
     }
   };
 
-  // Load the bundled sample dataset once on mount, through the same
-  // parseCSV → setDataPoints pipeline as a user upload — so it's the
-  // initial dataset without any separate hardcoded-data code path. Wrap
-  // the raw CSV text in a File so parseCSV (which takes a File) is reused
-  // verbatim. Skipped-row banners are intentionally not surfaced here,
-  // since this isn't a user-initiated load.
+  // Load the startup dataset once on mount, through the same parseCSV →
+  // setDataPoints pipeline as a user upload — so it's the initial
+  // dataset without any separate hardcoded-data code path. Either
+  // source is wrapped in a File so parseCSV (which takes a File) is
+  // reused verbatim. Skipped-row banners are intentionally not surfaced
+  // here, since this isn't a user-initiated load; hard failures still
+  // are, via the same banner a manual upload would use.
   useEffect(() => {
-    const file = new File([sampleCsv], "mixed-sign-sample.csv", {
-      type: "text/csv",
-    });
-    parseCSV(file)
-      .then(({ rows, points, mapping, schema, metadata }) =>
+    // Guards against a late resolve landing after unmount (or after a
+    // fast-refresh remount) and writing to a stale store subscription.
+    let cancelled = false;
+
+    // config.json's data.sampleDataset decides where the first dataset
+    // comes from. Blank (the shipped default) uses the CSV bundled at
+    // build time; any other value is fetched at runtime, so a deployer
+    // can point the app at their own file without a rebuild.
+    const fetchStartupDataset = async (): Promise<File> => {
+      if (!STARTUP_DATASET) {
+        return new File([bundledSampleCsv], BUNDLED_SAMPLE_NAME, {
+          type: "text/csv",
+        });
+      }
+      const response = await fetch(STARTUP_DATASET);
+      if (!response.ok) {
+        throw appError(
+          CODES.CSV_FETCH_FAILED,
+          `Could not load the configured startup dataset "${STARTUP_DATASET}" (HTTP ${response.status}).`,
+          [
+            "Set data.sampleDataset in config.json to a path the browser can fetch,",
+            "or leave it blank to use the bundled sample dataset.",
+          ],
+        );
+      }
+      // A single-page host typically rewrites unknown paths to
+      // index.html with a 200 rather than a 404, so `response.ok` alone
+      // doesn't mean the file was found. Without this check a mistyped
+      // path feeds HTML to the CSV parser, which then reports a
+      // confusing "0 numeric columns" instead of a bad path.
+      if (response.headers.get("content-type")?.includes("text/html")) {
+        throw appError(
+          CODES.CSV_NOT_CSV,
+          `The configured startup dataset "${STARTUP_DATASET}" returned an HTML page, not a CSV file.`,
+          [
+            "The path is probably wrong — most hosts serve index.html with a 200 for unknown paths.",
+            "Check data.sampleDataset in config.json.",
+          ],
+        );
+      }
+      const text = await response.text();
+      // Name the File after the fetched path so any parse error message
+      // names the real file rather than a placeholder.
+      const name = STARTUP_DATASET.split("/").pop() || "dataset.csv";
+      return new File([text], name, { type: "text/csv" });
+    };
+
+    fetchStartupDataset()
+      .then(parseCSV)
+      .then(({ rows, points, mapping, schema, metadata, skippedRows }) => {
+        if (cancelled) return;
         setDataPoints(
           points,
-          { x: mapping.x, y: mapping.y, z: mapping.z ?? "Z" },
+          {
+            x: mapping.x,
+            y: mapping.y,
+            z: mapping.z ?? config.defaults.unmappedAxisLabel,
+          },
           schema,
           metadata,
           rows,
           mapping,
-        ),
-      )
-      .catch((err) =>
-        setLoadError(
-          err instanceof Error ? err.message : "Failed to load sample data.",
-        ),
-      );
-  }, [setDataPoints]);
+        );
+        // Startup exclusions are logged (they belong in the Console's
+        // record of the session) but at INFO level, so they don't raise
+        // a red banner over a load the analyst never initiated.
+        pushLog(
+          CODES.CSV_LOADED,
+          `${STARTUP_DATASET || BUNDLED_SAMPLE_NAME}: loaded ${points.length} point(s) from ${rows.length} row(s).`,
+          [
+            `Source: ${STARTUP_DATASET ? "config.json data.sampleDataset" : "bundled sample"}`,
+            `Axes: ${mapping.x} / ${mapping.y} / ${mapping.z ?? "none (2D)"}`,
+            ...(skippedRows.length > 0
+              ? [
+                  `Excluded ${skippedRows.length} row(s):`,
+                  ...formatSkippedRows(skippedRows),
+                ]
+              : []),
+          ],
+        );
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const { appCode, message, detail } = describeError(
+          err,
+          "Failed to load sample data.",
+        );
+        pushLog(appCode, message, detail);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setDataPoints, pushLog]);
 
   // Unique class names from the loaded dataset, sorted for stable order.
   // Derived from dataPoints (not a hardcoded map) so any class — built-in
@@ -304,18 +435,48 @@ function App() {
           </p>
         </div>
 
-        {/* CSV load error/info banner — only renders when loadError is
-            set. Uses the same glass-morphism styling as the Point
-            Analysis panel below for visual consistency. Cleared
-            (setLoadError(null)) at the start of every new load attempt. */}
-        {loadError && (
-          <div className={`pointer-events-auto max-w-md p-3 ${ERROR.bg}`}>
-            <p
-              className={`text-[10px] font-bold ${ERROR.label} uppercase mb-1`}
-            >
-              CSV Load
+        {/* Diagnostic banner — the newest error or warning, on the
+            left, carrying its error code. Deliberately compact: the
+            code plus a one-line summary, with the full per-row detail
+            one click away in the Console page rather than crammed in
+            here (the old banner tried to list every excluded row number
+            inline and became unreadable on any real file).
+            Red for errors, amber for warnings, so a partial load isn't
+            styled like a failure. */}
+        {activeAlert && (
+          <div
+            className={`pointer-events-auto max-w-md p-3 ${
+              activeAlert.severity === "error" ? ERROR.bg : WARNING.bg
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <p
+                className={`text-[10px] font-bold uppercase ${
+                  activeAlert.severity === "error"
+                    ? ERROR.label
+                    : WARNING.label
+                }`}
+              >
+                <span className="font-mono">{activeAlert.code}</span>{" "}
+                {activeAlert.title}
+              </p>
+              <button
+                onClick={() => setDismissedLogId(activeAlert.id)}
+                className={`text-[10px] ${TEXT.muted} hover:${TEXT.onFilled} leading-none px-1`}
+                title="Dismiss (stays in the Console)"
+                aria-label="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+            <p className={`text-[11px] ${TEXT.emphasis}`}>
+              {activeAlert.message}
             </p>
-            <p className={`text-[11px] ${TEXT.emphasis}`}>{loadError}</p>
+            {activeAlert.detail && activeAlert.detail.length > 0 && (
+              <p className={`text-[10px] ${TEXT.faint} mt-1`}>
+                Open the Console tab for details.
+              </p>
+            )}
           </div>
         )}
 
@@ -539,9 +700,10 @@ function App() {
         style={{ cursor: activeTool === "pan" ? "grab" : "default" }}
       >
         {/* Sets the camera's starting position before any user input.
-            [5,4,5] keeps the -2..2 grid box comfortably in frame — an
-            earlier value of [20,20,20] made the box look too small. */}
-        <PerspectiveCamera makeDefault position={[5, 4, 5]} />
+            The default [5,4,5] keeps the -2..2 grid box comfortably in
+            frame — an earlier value of [20,20,20] made the box look too
+            small. Tunable via config.json's camera.initialPosition. */}
+        <PerspectiveCamera makeDefault position={INITIAL_CAMERA_POSITION} />
 
         {/* Lighting: a strong ambient floor so every data point is
             passively visible anywhere in the box (meshStandardMaterial
