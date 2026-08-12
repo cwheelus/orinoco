@@ -1,5 +1,7 @@
 import Papa from "papaparse";
 import type { DataPoint } from "../types";
+import { config } from "./config";
+import { appError, CODES } from "./errorCodes";
 
 /**
  * parseCSV.ts
@@ -88,11 +90,53 @@ export interface ParseResult {
   // overwrite earlier metadata entries for that uid — datasets are
   // expected to provide unique identifiers.
   metadata: Record<string, Record<string, string>>;
-  // Row numbers (matching what a user would see in a spreadsheet,
-  // 1-indexed + header row) skipped due to non-numeric values in a
-  // column that was otherwise classified as numeric, or missing
-  // uid/class values.
-  skippedRows: number[];
+  // Rows excluded from the plot, each with the reason it was dropped.
+  // See SkippedRow — the per-row reason is what the Console page
+  // displays, so an analyst can find and fix the offending cell rather
+  // than just being told a count.
+  skippedRows: SkippedRow[];
+}
+
+// One excluded row. `row` matches what the analyst sees in a
+// spreadsheet (1-indexed, counting the header), so it can be looked up
+// directly in the source file.
+export interface SkippedRow {
+  row: number;
+  // Human-readable cause naming the offending COLUMN, e.g.
+  // 'invel_pps is not a number ("n/a")'. Named per-row rather than
+  // summarized per-file, since two rows can be dropped for different
+  // reasons and a single count hides that.
+  reason: string;
+}
+
+// Longest raw cell value echoed back in a skip reason. A malformed CSV
+// can put an entire line in one field; quoting all of it would swamp
+// the console entry it appears in.
+const MAX_ECHOED_VALUE = 32;
+
+/**
+ * Collapses a skip list into its distinct reasons with counts, e.g.
+ * ['12 rows: class is empty', '3 rows: orig_bytes is not a number'].
+ * Used where the individual row numbers matter less than the PATTERN —
+ * a thousand rows failing for one reason is one problem, not a
+ * thousand.
+ */
+export function distinctReasons(skipped: SkippedRow[]): string[] {
+  const counts = new Map<string, number>();
+  for (const s of skipped) {
+    counts.set(s.reason, (counts.get(s.reason) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => `${n} row${n === 1 ? "" : "s"}: ${reason}`);
+}
+
+function echoValue(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === "") return "empty";
+  const trimmed = raw.trim();
+  return trimmed.length > MAX_ECHOED_VALUE
+    ? `"${trimmed.slice(0, MAX_ECHOED_VALUE)}…"`
+    : `"${trimmed}"`;
 }
 
 // A column is treated as NUMERIC if at least this fraction of its
@@ -100,12 +144,16 @@ export interface ParseResult {
 // real-world CSV may have a few blank/typo'd cells in an otherwise
 // numeric column — those individual rows get skipped later, not the
 // whole column's classification.
-const NUMERIC_THRESHOLD = 0.9;
+const NUMERIC_THRESHOLD = config.data.numericThreshold;
 // How many rows to sample when classifying a column's type. Sampling
 // instead of scanning the whole file keeps classification fast even
 // on very large CSVs, since this only needs to be "confident enough,"
 // not exhaustive.
-const SAMPLE_SIZE = 50;
+const SAMPLE_SIZE = config.data.typeSampleSize;
+// Fewest numeric columns a file may have and still be plottable.
+// MIN_NUMERIC_COLUMNS itself is the 2D case (Z synthesized as 0); one
+// more than that is a normal 3D dataset.
+const MIN_NUMERIC_COLUMNS = config.data.minNumericColumns;
 
 function isNumeric(value: string): boolean {
   return value.trim() !== "" && Number.isFinite(Number(value));
@@ -172,10 +220,10 @@ export function buildPoints(
 ): {
   points: DataPoint[];
   metadata: Record<string, Record<string, string>>;
-  skippedRows: number[];
+  skippedRows: SkippedRow[];
 } {
   const points: DataPoint[] = [];
-  const skippedRows: number[] = [];
+  const skippedRows: SkippedRow[] = [];
   const metadata: Record<string, Record<string, string>> = {};
 
   // No Z column in the mapping means this build should treat the
@@ -195,16 +243,29 @@ export function buildPoints(
     const uid = row[mapping.uid]?.trim();
     const className = row[mapping.className]?.trim();
 
-    const isValid =
-      uid &&
-      className &&
-      Number.isFinite(x) &&
-      Number.isFinite(y) &&
-      Number.isFinite(z);
+    // Report the FIRST failing field rather than a generic "invalid
+    // row", so the console entry points at the actual cell to fix.
+    // Checked in column order (identity, label, then the axes) so a row
+    // missing several fields reports the most fundamental one.
+    // Written as early returns rather than an accumulated reason
+    // string: the guards double as type narrowing, which is what lets
+    // the push below see uid/className as definitely-present.
+    const skip = (reason: string) => {
+      skippedRows.push({ row: index + 2, reason }); // +2: 1-indexed + header
+    };
 
-    if (!isValid) {
-      skippedRows.push(index + 2);
-      return;
+    if (!uid) return skip(`${mapping.uid} is empty`);
+    if (!className) return skip(`${mapping.className} is empty`);
+    if (!Number.isFinite(x)) {
+      return skip(`${mapping.x} is not a number (${echoValue(row[mapping.x])})`);
+    }
+    if (!Number.isFinite(y)) {
+      return skip(`${mapping.y} is not a number (${echoValue(row[mapping.y])})`);
+    }
+    if (!is2D && !Number.isFinite(z)) {
+      return skip(
+        `${mapping.z} is not a number (${echoValue(row[mapping.z!])})`,
+      );
     }
 
     points.push({ uid, x, y, z, className });
@@ -229,7 +290,12 @@ export function parseCSV(file: File): Promise<ParseResult> {
         const rows = results.data;
 
         if (headers.length === 0 || rows.length === 0) {
-          reject(new Error("CSV appears to be empty."));
+          reject(
+            appError(CODES.CSV_EMPTY, "CSV appears to be empty.", [
+              `Headers found: ${headers.length}`,
+              `Data rows found: ${rows.length}`,
+            ]),
+          );
           return;
         }
 
@@ -244,10 +310,16 @@ export function parseCSV(file: File): Promise<ParseResult> {
         //   drive x/y/z afterward via the Data panel — see useStore.ts's
         //   setColumnMapping, which rebuilds points via buildPoints above
         //   against the same retained rows, no reparse needed.
-        if (numeric.length < 2) {
+        if (numeric.length < MIN_NUMERIC_COLUMNS) {
           reject(
-            new Error(
-              `Expected at least 2 numeric columns to plot, found ${numeric.length} (${numeric.join(", ") || "none"}).`,
+            appError(
+              CODES.CSV_TOO_FEW_NUMERIC,
+              `Expected at least ${MIN_NUMERIC_COLUMNS} numeric columns to plot, found ${numeric.length}.`,
+              [
+                `Numeric columns: ${numeric.join(", ") || "none"}`,
+                `Text columns: ${text.join(", ") || "none"}`,
+                `A column counts as numeric when at least ${Math.round(NUMERIC_THRESHOLD * 100)}% of its first ${SAMPLE_SIZE} non-empty values parse as numbers.`,
+              ],
             ),
           );
           return;
@@ -255,8 +327,10 @@ export function parseCSV(file: File): Promise<ParseResult> {
 
         if (text.length === 0) {
           reject(
-            new Error(
+            appError(
+              CODES.CSV_NO_TEXT_COLUMNS,
               "No text/label columns found — need at least one for classification.",
+              [`All ${headers.length} columns classified as numeric.`],
             ),
           );
           return;
@@ -269,9 +343,12 @@ export function parseCSV(file: File): Promise<ParseResult> {
         const uidColumn = pickUidColumn(text, rows);
         const classColumn = text.find((c) => c !== uidColumn) ?? uidColumn;
 
-        // Exactly two numeric columns represent a 2D dataset.
-        // Z is synthesized as 0 for every point in that case.
-        const is2D = numeric.length === 2;
+        // Fewer than three numeric columns means there is no third
+        // column available to map to Z, so the dataset is 2D and Z is
+        // synthesized as 0 for every point. Deliberately NOT written as
+        // `=== MIN_NUMERIC_COLUMNS`: raising that setting to 3 would
+        // then misclassify genuine 3-column 3D files as flat.
+        const is2D = numeric.length < 3;
         const schema: DatasetSchema = {
           headers,
           numericColumns: numeric,
@@ -305,8 +382,13 @@ export function parseCSV(file: File): Promise<ParseResult> {
 
         if (points.length === 0) {
           reject(
-            new Error(
-              "No valid data rows found after parsing — check the file's contents.",
+            appError(
+              CODES.CSV_NO_VALID_ROWS,
+              `No valid data rows found — all ${rows.length} row(s) were excluded.`,
+              // Every row failed, so the per-row reasons ARE the
+              // diagnosis here. The console truncates the list; the
+              // distinct reasons below say what to actually fix.
+              distinctReasons(skippedRows),
             ),
           );
           return;
@@ -314,7 +396,15 @@ export function parseCSV(file: File): Promise<ParseResult> {
 
         resolve({ rows, points, mapping, schema, metadata, skippedRows });
       },
-      error: (error) => reject(error),
+      error: (error) =>
+        reject(
+          appError(
+            CODES.CSV_PARSE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "The CSV file could not be read.",
+          ),
+        ),
     });
   });
 }

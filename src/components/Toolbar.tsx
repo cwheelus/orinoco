@@ -12,10 +12,104 @@ import {
   MousePointer2,
   Sun,
   Moon,
+  Terminal,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
-import type { AxisKey, FilterOp, ScalingMode } from "../store/useStore";
-import { PANEL, TEXT, LINK, INPUT, HOVER, ICON_BUTTON } from "../lib/theme";
+import type {
+  AxisKey,
+  FilterOp,
+  ScalingMode,
+  LogEntry,
+} from "../store/useStore";
+import {
+  PANEL,
+  TEXT,
+  LINK,
+  INPUT,
+  HOVER,
+  ICON_BUTTON,
+  SEVERITY_TEXT,
+} from "../lib/theme";
+import { config } from "../lib/config";
+
+// Range and granularity of the two Data/Grid page sliders — the bounds
+// a deployer sets on what the analyst may dial in. See config.json's
+// `limits` section.
+const POINT_SIZE_SLIDER = config.limits.pointSizeSlider;
+const TICK_DENSITY_SLIDER = config.limits.tickDensitySlider;
+// `accept` filter for both file pickers. A UI hint only — the parsers
+// still validate real content, since accept is bypassable via
+// drag-and-drop or a renamed file.
+const ACCEPTED_FILE_TYPES = config.data.acceptedFileTypes;
+
+// HH:MM:SS in the viewer's locale — the Console's entries are all from
+// the current session, so the date would be noise.
+const logTime = (ms: number) =>
+  new Date(ms).toLocaleTimeString(undefined, { hour12: false });
+
+/**
+ * One Console row: severity-colored code + title, the message, the
+ * timestamp, and collapsible detail.
+ *
+ * Detail is collapsed by DEFAULT and expanded on click, because the
+ * useful case is a long list — an excluded-rows entry can run to
+ * config.console.maxListedRows lines, which would bury every other
+ * entry in the log if always expanded.
+ */
+function ConsoleRow({ entry }: { entry: LogEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = !!entry.detail && entry.detail.length > 0;
+
+  return (
+    <div className={`border-b ${PANEL.border} pb-1.5 mb-1.5 last:border-b-0`}>
+      <div className="flex items-baseline gap-1.5">
+        <span
+          className={`text-[9px] font-mono font-bold shrink-0 ${SEVERITY_TEXT[entry.severity]}`}
+        >
+          {entry.code}
+        </span>
+        <span className={`text-[9px] ${TEXT.body} flex-1 truncate`}>
+          {entry.title}
+        </span>
+        <span className={`text-[8px] font-mono ${TEXT.faint} shrink-0`}>
+          {logTime(entry.timestamp)}
+        </span>
+      </div>
+      <p className={`text-[10px] ${TEXT.emphasis} mt-0.5 break-words`}>
+        {entry.message}
+      </p>
+      {hasDetail && (
+        <>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className={`text-[9px] ${LINK.base} mt-0.5`}
+            aria-expanded={expanded}
+          >
+            {expanded
+              ? "Hide details"
+              : `Show details (${entry.detail!.length})`}
+          </button>
+          {expanded && (
+            // font-mono + whitespace-pre-wrap so row numbers and quoted
+            // cell values line up and stay readable when they wrap.
+            <div
+              className={`mt-1 p-1.5 rounded bg-black/30 light:bg-black/5 max-h-48 overflow-y-auto`}
+            >
+              {entry.detail!.map((line, i) => (
+                <p
+                  key={i}
+                  className={`text-[9px] font-mono ${TEXT.muted} whitespace-pre-wrap break-words`}
+                >
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 // Scaling-mode options for the Grid page, in display order.
 const SCALING_MODES: { value: ScalingMode; label: string; hint: string }[] = [
@@ -92,7 +186,7 @@ interface ToolbarProps {
   onColorFileSelected: (file: File) => void;
 }
 
-type PageKey = "data" | "grid" | "isolate";
+type PageKey = "data" | "grid" | "isolate" | "console";
 
 // Fixed width of the icon strip itself, in pixels — this never
 // changes, unlike contentWidth below. Used both for layout (the
@@ -163,6 +257,16 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
   // its status line, and the icon-strip button's active state.
   const isolatedOctant = useStore((state) => state.isolatedOctant);
   const setIsolatedOctant = useStore((state) => state.setIsolatedOctant);
+  // Session diagnostics — see lib/errorCodes.ts for the code registry.
+  const logEntries = useStore((state) => state.logEntries);
+  const clearLog = useStore((state) => state.clearLog);
+  // Highest entry id the analyst has already seen in the Console. Used
+  // for the icon-strip badge, so opening the page marks everything
+  // current as reviewed instead of the badge sticking forever.
+  const [reviewedLogId, setReviewedLogId] = useState(0);
+  const alertCount = logEntries.filter(
+    (e) => e.severity !== "info" && e.id > reviewedLogId,
+  ).length;
   // Which page (if any) is currently selected. null means the panel
   // is fully collapsed — only the icon strip shows, no content pane.
   const [activePage, setActivePage] = useState<PageKey | null>(null);
@@ -230,6 +334,12 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
     } else {
       setActivePage(page);
       setContentWidth((w) => (w > 0 ? w : DEFAULT_OPEN_WIDTH));
+      // Opening the Console counts as reviewing everything currently in
+      // it, so the icon-strip badge clears. Entries logged AFTER this
+      // point have higher ids and will light it again.
+      if (page === "console" && logEntries.length > 0) {
+        setReviewedLogId(logEntries[logEntries.length - 1].id);
+      }
     }
   };
 
@@ -369,7 +479,7 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
         <input
           ref={inputRef}
           type="file"
-          accept=".csv"
+          accept={ACCEPTED_FILE_TYPES}
           onChange={handleFileChange}
           className="hidden"
         />
@@ -402,7 +512,7 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
         <input
           ref={colorInputRef}
           type="file"
-          accept=".csv"
+          accept={ACCEPTED_FILE_TYPES}
           onChange={handleColorFileChange}
           className="hidden"
         />
@@ -498,6 +608,34 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
         >
           <Box size={16} />
         </button>
+
+        {/* PAGE: Console — the session's diagnostics. Unlike the other
+            page tabs, this one also lights up when the panel is CLOSED
+            and an unreviewed error/warning exists, so a problem is
+            visible in the strip without the pane open. The badge count
+            is unreviewed errors+warnings only; info entries (routine
+            successful loads) would otherwise keep it permanently lit. */}
+        <button
+          onClick={() => togglePage("console")}
+          className={`relative ${iconButtonClass(
+            (activePage === "console" && contentWidth > 0) || alertCount > 0,
+          )}`}
+          title={
+            alertCount > 0
+              ? `Console — ${alertCount} unreviewed issue(s)`
+              : "Console"
+          }
+        >
+          <Terminal size={16} />
+          {alertCount > 0 && (
+            <span
+              className="absolute -top-0.5 -right-0.5 min-w-[13px] h-[13px] px-[3px] rounded-full bg-red-500 text-white text-[8px] font-bold leading-[13px] text-center"
+              aria-label={`${alertCount} unreviewed issues`}
+            >
+              {alertCount > 9 ? "9+" : alertCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Content pane — sits AFTER the icon strip, extending toward
@@ -516,7 +654,15 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
             width — avoids rendering (and users tabbing into) content
             that's currently invisible/mid-collapse. */}
         {activePage && contentWidth > 0 && (
-          <div className="w-56 p-3 pt-4 space-y-3">
+          // h-full + overflow-y-auto: the pane's own wrapper is
+          // overflow-hidden (it has to be, so the width transition
+          // doesn't spill content during the animation), which meant a
+          // page taller than the viewport was silently CLIPPED with no
+          // way to reach the rest. The Console is the page that made
+          // this visible — its entry list grows without bound — but the
+          // fix belongs here, on the shared container, since the Data
+          // page overflows too once a dataset has many classes.
+          <div className="w-56 p-3 pt-4 space-y-3 h-full overflow-y-auto">
             {/* Data page: lists the two features planned to live here
                 (filtering, point-size scaling) as named placeholders
                 rather than generic "coming soon" text, so it's clear
@@ -755,9 +901,9 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                       sparse data or make points easier to click. */}
                   <input
                     type="range"
-                    min={0.25}
-                    max={4}
-                    step={0.05}
+                    min={POINT_SIZE_SLIDER.min}
+                    max={POINT_SIZE_SLIDER.max}
+                    step={POINT_SIZE_SLIDER.step}
                     value={pointSizeScale}
                     onChange={(e) =>
                       setPointSizeScale(parseFloat(e.target.value))
@@ -831,9 +977,9 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                       step to roughly hit it. Higher = finer/more ticks. */}
                   <input
                     type="range"
-                    min={3}
-                    max={30}
-                    step={1}
+                    min={TICK_DENSITY_SLIDER.min}
+                    max={TICK_DENSITY_SLIDER.max}
+                    step={TICK_DENSITY_SLIDER.step}
                     value={tickDensity}
                     onChange={(e) =>
                       setTickDensity(parseInt(e.target.value, 10))
@@ -957,6 +1103,48 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                     </button>
                   )}
                 </div>
+              </>
+            )}
+            {activePage === "console" && (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className={TEXT.heading}>Console</p>
+                  {logEntries.length > 0 && (
+                    <button
+                      onClick={clearLog}
+                      className={`text-[9px] ${LINK.base}`}
+                      title="Clear all console entries"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {logEntries.length === 0 ? (
+                  <p className={`text-[10px] ${TEXT.muted}`}>
+                    No diagnostics yet. Loading a dataset or color file
+                    records the result here — including the exact rows
+                    excluded and why.
+                  </p>
+                ) : (
+                  <>
+                    <p className={`text-[9px] ${TEXT.faint}`}>
+                      Newest first · {logEntries.length} entr
+                      {logEntries.length === 1 ? "y" : "ies"}
+                    </p>
+                    {/* Reversed so the newest entry is at the top,
+                        matching where attention goes after an action.
+                        slice() first — reverse() mutates, and this array
+                        is the store's own state. */}
+                    <div>
+                      {logEntries
+                        .slice()
+                        .reverse()
+                        .map((entry) => (
+                          <ConsoleRow key={entry.id} entry={entry} />
+                        ))}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
