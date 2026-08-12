@@ -766,3 +766,8 @@ Advisors:
 
 - Eric Lloyd
 - BC Ko
+
+Stakeholder:
+
+- Charles Wheelus, Founder
+  Sentient.solutions
