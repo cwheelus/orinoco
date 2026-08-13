@@ -61,6 +61,15 @@ export function CartesianGrid() {
   const zeroY = useStore((state) => state.gridSpace.ZERO_RENDER.y);
   const planeY = Math.min(MAX, Math.max(MIN, zeroY));
 
+  // The bounding box implies real depth on all three axes, which is
+  // misleading once the analyst has flattened the view to 2D — see
+  // Axes.tsx's is2D, which drives this from the same source (the
+  // active column mapping, not the original dataset's shape). Only
+  // the box is skipped; the horizontal plane grid still applies to a
+  // 2D dataset the same way it does to a 3D one.
+  const columnMapping = useStore((state) => state.columnMapping);
+  const is2D = columnMapping?.z == null;
+
   const planeLines = useMemo(() => {
     const lines: [number, number, number][][] = [];
     COORDS.forEach((x) => {
@@ -90,16 +99,17 @@ export function CartesianGrid() {
           opacity={PLANE_OPACITY}
         />
       ))}
-      {BOX_EDGES.map(([a, b], i) => (
-        <Line
-          key={`box-${i}`}
-          points={[CORNERS[a], CORNERS[b]]}
-          color={scene.outline}
-          lineWidth={1}
-          transparent
-          opacity={BOX_OPACITY}
-        />
-      ))}
+      {!is2D &&
+        BOX_EDGES.map(([a, b], i) => (
+          <Line
+            key={`box-${i}`}
+            points={[CORNERS[a], CORNERS[b]]}
+            color={scene.outline}
+            lineWidth={1}
+            transparent
+            opacity={BOX_OPACITY}
+          />
+        ))}
     </group>
   );
 }
