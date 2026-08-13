@@ -41,6 +41,21 @@ _(placeholder — screenshot to be retaken)_
 
 ---
 
+# Use Cases
+
+Project Orinoco supports exploratory analysis when network behavior is easier to understand spatially than in a flat table or dashboard.
+
+- **Investigate anomalous traffic** — Plot flow metrics such as packet rate, byte volume, and bytes per packet to find observations that sit far from normal traffic patterns.
+- **Explore clusters and outliers** — Navigate dense groups in three dimensions, inspect individual points, and use the pivot system to examine local relationships from different viewpoints.
+- **Compare traffic classes** — Color-coded classifications make it easier to see where normal and suspicious activity overlap, separate, or form distinct regions.
+- **Focus on a region of interest** — Combine class filters, numeric range filters, and octant isolation to reduce visual noise and investigate a specific subset of the dataset.
+- **Test feature combinations** — Load a CSV and remap numeric columns to the X, Y, and Z axes to evaluate which feature combinations reveal useful structure.
+- **Communicate investigation findings** — Use the interactive scene as a shared visual reference when explaining an outlier, cluster, or traffic pattern to other analysts.
+
+Project Orinoco is intended as an exploratory visualization aid. It complements—not replaces—detection rules, statistical analysis, and established incident-response workflows.
+
+---
+
 # Key Features
 
 ## Symmetric 3D Cartesian Plot Visualization
