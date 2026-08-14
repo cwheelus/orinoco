@@ -49,9 +49,11 @@ const BOX_EDGES = [
   [3, 7], // verticals
 ] as const;
 
-// CartesianGrid renders the static 3D reference frame:
+// CartesianGrid renders the static reference frame:
 //   • A horizontal grid plane at data-zero (y=0), clamped inside the volume
-//   • A faint wireframe box showing the [-2, 2]³ bounds
+//   • A faint wireframe box showing the [-2, 2]³ bounds, in 3D mode only —
+//     hidden when the active column mapping is 2D (see is2D below), since
+//     it would otherwise imply Z-depth that isn't there
 // Coordinate axes, tick marks, and labels live in Axes.tsx — this
 // component is only the backdrop. Colors are theme-aware so the grid
 // remains visible against both light and dark backgrounds.
@@ -67,8 +69,7 @@ export function CartesianGrid() {
   // active column mapping, not the original dataset's shape). Only
   // the box is skipped; the horizontal plane grid still applies to a
   // 2D dataset the same way it does to a 3D one.
-  const columnMapping = useStore((state) => state.columnMapping);
-  const is2D = columnMapping?.z == null;
+  const is2D = useStore((state) => state.columnMapping?.z == null);
 
   const planeLines = useMemo(() => {
     const lines: [number, number, number][][] = [];
