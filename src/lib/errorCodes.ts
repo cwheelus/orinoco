@@ -148,7 +148,15 @@ export function appError(
 }
 
 export function isAppError(err: unknown): err is AppError {
-  return err instanceof Error && "appCode" in err;
+  if (!(err instanceof Error) || err.name !== "AppError") return false;
+  const appCode = (err as { appCode?: unknown }).appCode;
+  return (
+    typeof appCode === "object" &&
+    appCode !== null &&
+    typeof (appCode as ErrorCode).code === "string" &&
+    typeof (appCode as ErrorCode).severity === "string" &&
+    typeof (appCode as ErrorCode).title === "string"
+  );
 }
 
 /**
@@ -157,7 +165,10 @@ export function isAppError(err: unknown): err is AppError {
  * stray throw still lands in the console with a code rather than
  * vanishing or arriving as a bare string.
  */
-export function describeError(err: unknown, fallbackMessage: string): {
+export function describeError(
+  err: unknown,
+  fallbackMessage: string,
+): {
   appCode: ErrorCode;
   message: string;
   detail?: string[];
