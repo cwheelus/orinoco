@@ -1,3 +1,4 @@
+import type { Severity } from "./errorCodes";
 // theme.ts
 //
 // Centralized UI color/style tokens. Every component that previously
@@ -146,13 +147,14 @@ export const WARNING = {
 };
 
 // Per-severity accent for Console rows. Keyed by the Severity union in
-// lib/errorCodes.ts, so a new severity there is a type error here until
-// it's given a color rather than silently rendering unstyled.
+// lib/errorCodes.ts via `satisfies`, so a new severity there is a
+// type error here until it's given a color, rather than silently
+// rendering unstyled.
 export const SEVERITY_TEXT = {
   error: "text-red-400 light:text-red-600",
   warning: "text-amber-400 light:text-amber-600",
   info: "text-sky-400 light:text-sky-600",
-};
+} satisfies Record<Severity, string>;
 
 export const KBD = {
   // A single keyboard-key chip (used for every WASD/arrow/Spc/Shift
