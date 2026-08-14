@@ -43,8 +43,6 @@ const MAX_LOG_ENTRIES = config.console.maxEntries;
 // try to render 50k lines.
 const MAX_LISTED_ROWS = config.console.maxListedRows;
 
-let nextLogId = 1;
-
 /**
  * Formats a skip list into console detail lines: the individual rows up
  * to MAX_LISTED_ROWS, then a per-reason summary once it's longer than
@@ -342,6 +340,10 @@ interface VisualizerState {
   // useState could not be shared, so each new message destroyed the
   // previous one.
   logEntries: LogEntry[];
+  // Monotonic counter for LogEntry.id. Kept in Zustand state so it
+  // remains consistent with logEntries across Vite Fast Refresh.
+  // Deliberately not reset by clearLog.
+  nextLogId: number;
   // Appends a diagnostic. Takes the ErrorCode registry entry rather
   // than loose strings, so code/severity/title always agree with
   // lib/errorCodes.ts.
@@ -459,7 +461,7 @@ export const useStore = create<VisualizerState>((set) => ({
       // with no explanation. Log it like any other exclusion.
       const remapLog: LogEntry[] = [
         {
-          id: nextLogId++,
+          id: state.nextLogId,
           timestamp: Date.now(),
           code: CODES.CSV_REMAPPED.code,
           severity: CODES.CSV_REMAPPED.severity,
@@ -472,12 +474,12 @@ export const useStore = create<VisualizerState>((set) => ({
         },
       ];
       const nextLog = [...state.logEntries, ...remapLog];
-
       return {
         logEntries:
           nextLog.length > MAX_LOG_ENTRIES
             ? nextLog.slice(nextLog.length - MAX_LOG_ENTRIES)
             : nextLog,
+        nextLogId: state.nextLogId + 1,
         dataPoints: rebuilt.points,
         pointMetadata: rebuilt.metadata,
         columnMapping: mapping,
@@ -558,10 +560,11 @@ export const useStore = create<VisualizerState>((set) => ({
   resetClassColors: () => set({ classColorOverrides: {} }),
   setClassColorOverrides: (classColorOverrides) => set({ classColorOverrides }),
   logEntries: [],
+  nextLogId: 1,
   pushLog: (code, message, detail) =>
     set((state) => {
       const entry: LogEntry = {
-        id: nextLogId++,
+        id: state.nextLogId,
         timestamp: Date.now(),
         code: code.code,
         severity: code.severity,
@@ -576,6 +579,7 @@ export const useStore = create<VisualizerState>((set) => ({
           next.length > MAX_LOG_ENTRIES
             ? next.slice(next.length - MAX_LOG_ENTRIES)
             : next,
+        nextLogId: state.nextLogId + 1,
       };
     }),
   clearLog: () => set({ logEntries: [] }),
