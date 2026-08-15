@@ -92,6 +92,7 @@ Analysts can load any CSV dataset directly in-browser via the toolbar's file pic
 3. Text columns are mapped to a unique identifier (`uid`) and a classification label (`class`) — the column with the highest ratio of unique values is treated as the identifier; any additional text columns are captured as point metadata, shown in the Point Analysis HUD
 4. Malformed files (fewer than 2 numeric columns, no text columns, empty file) fail with a specific, visible error message rather than silently producing bad output or crashing
 5. Rows with missing or invalid numeric values are skipped individually rather than failing the whole file — a banner reports which row numbers were excluded
+6. Optionally, a second CSV can be loaded to override classification colors: a two-column file mapping class names to hex colors (e.g. `className,color`). Header names are matched flexibly (case-insensitive, ignoring spaces/underscores/hyphens), so `Class_Name` or `class name` are both accepted. Malformed rows (missing header, invalid hex value, empty class name) are skipped individually and reported in the Console, same as dataset CSV parsing — a color file doesn't have to be perfect to load the valid pairs it does contain
 
 Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to any one dataset.
 
@@ -124,27 +125,39 @@ flowchart LR
 
 ## Tactical Navigation
 
-The visualization environment supports analyst-focused navigation.
+The visualization environment supports analyst-focused navigation. Keyboard behavior depends on whether the dataset has a Z axis mapped (3D mode) or not (2D mode, Z = None) — see 2D Mode below for why.
 
-| Input         | Action                                                                                         |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| W             | Move toward current pivot                                                                      |
-| S             | Move away from current pivot                                                                   |
-| A             | Orbit left around pivot                                                                        |
-| D             | Orbit right around pivot                                                                       |
-| Left / Right  | Move pivot along the X axis                                                                    |
-| Up / Down     | Move pivot along the Z axis                                                                    |
-| Space / Shift | Raise / lower pivot along the Y axis                                                           |
-| Mouse Drag    | Free camera rotation, or pan (translate view), depending on the active tool set in the Toolbar |
-| Mouse Hover   | Inspect point metadata                                                                         |
-| Mouse Click   | Set selected node as new pivot                                                                 |
-| Toolbar Reset | Return pivot to origin                                                                         |
+| Input         | 3D Mode                          | 2D Mode (Z = None)             |
+| ------------- | --------------------------------- | ---------------------------------- |
+| W             | Move toward current pivot         | Disabled                           |
+| S             | Move away from current pivot      | Disabled                           |
+| A             | Orbit left around pivot           | Disabled                           |
+| D             | Orbit right around pivot          | Disabled                           |
+| Left / Right  | Move pivot along the X axis       | Move pivot along the X axis        |
+| Up / Down     | Move pivot along the Z axis       | Move pivot along the Y axis        |
+| Space / Shift | Raise / lower pivot along the Y axis | Raise / lower pivot along the Y axis |
+| Mouse Drag    | Free camera rotation, or pan (translate view), depending on the active tool set in the Toolbar | Pan only — rotation is locked |
+| Mouse Scroll  | Zoom                               | Zoom                               |
+| Mouse Hover   | Inspect point metadata            | Inspect point metadata             |
+| Mouse Click   | Set selected node as new pivot    | Set selected node as new pivot     |
+| Toolbar Reset | Return pivot to origin            | Return pivot to origin             |
+
+### 2D Mode
+
+When the active dataset has no Z column mapped (Z = None), the camera locks to a flat, top-down view looking straight down the Z axis at the X/Y plane — the plane the data is actually plotted on. This prevents the camera from tilting or orbiting to an angle where the flat dataset would appear as a sliver or disappear from view entirely.
+
+- The camera snap preserves the current zoom distance rather than resetting to a default
+- W/S (zoom-toward-pivot) and A/D (orbit) are disabled, along with mouse-drag rotation — orbit has no meaningful effect on a flat plane
+- Up/Down, which drive Z traversal in 3D, are redirected to drive Y instead, since Z has no spatial role in 2D — this keeps all four arrow keys meaningful regardless of mode
+- A passive "2D · Camera Locked" indicator appears near the Axis Mapping controls in the Toolbar's Data page, and the orbit/pan toolbar button's tooltip explains why orbit is unavailable
+- Switching a Z column back in resumes normal 3D controls without forcing a re-snap
 
 ### Navigation Guardrails
 
-- **Zoom limits** — shared `MIN_ZOOM_DIST` (0.15) / `MAX_ZOOM_DIST` (18), enforced both by OrbitControls' scroll dolly and the W/S keys, so the camera can neither pass through a point at close range in an unbounded way nor fly infinitely far out
-- **Pivot bounds** — the pivot cannot be moved more than 50% beyond the grid walls, clamped by a shared helper used by both arrow-key traversal and drag-panning, so rotation and the pivot marker stay in lockstep even when the clamp engages
+- **Zoom limits** — a shared min/max camera-to-pivot distance (0.15 / 18 by default, configurable via `config.json`'s `camera` section), enforced both by OrbitControls' scroll dolly and the W/S keys, so the camera can neither pass through a point at close range in an unbounded way nor fly infinitely far out
+- **Pivot bounds** — the pivot cannot be moved past a configurable multiple of the grid's half-extent beyond the walls (50% by default, `config.json`'s `camera.pivotLimitFactor`), clamped by a shared helper used by both arrow-key traversal and drag-panning, so rotation and the pivot marker stay in lockstep even when the clamp engages
 - **Stuck-key protection** — OS screenshot shortcuts that don't deliver a `keyup` while a modifier key is held (e.g. macOS Cmd+Shift+4) are detected and clear all held movement keys, so the camera can't drift indefinitely from a "stuck" key
+- **Tilt clamping** — in 3D mode, vertical orbit (tilt) stops just short of straight-up/straight-down rather than passing through, preventing gimbal-flip disorientation; horizontal orbit is unrestricted
 
 ---
 
@@ -201,7 +214,7 @@ The Grid page in the Toolbar controls how the reference grid and axes are presen
 
 - **Show grid** — toggles the wireframe box and grid plane; axis lines, tick marks, and labels remain visible regardless, since coordinate reference stays useful even without the box geometry
 - **Per-axis tick label visibility** — each of the three axes' tick marks and numeric labels can be hidden independently
-- **Tick density** — a slider (3–30, default 10) controlling how many tick marks appear per axis; the actual step size is rounded to a "nice" 1–2–5 number so labels stay human-readable. Tick marks and numbers scale per-frame by camera distance to hold a constant on-screen size rather than ballooning on approach
+- **Tick density** — a slider (3–30 by default, range and step configurable via `config.json`'s `limits.tickDensitySlider`) controlling how many tick marks appear per axis; the actual step size is rounded to a "nice" 1–2–5 number so labels stay human-readable. Tick marks and numbers scale per-frame by camera distance to hold a constant on-screen size rather than ballooning on approach
 - **Scaling modes** — see below
 
 ### Scaling Modes
@@ -257,6 +270,7 @@ A Blender-style docked side panel provides quick access to data and display cont
 | Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling |
 | Grid           | Opens a panel for grid visibility, tick labels, tick density, and scaling mode selection       |
 | Box            | Opens the Isolate page (octant gizmo) — lights up while an octant is isolated                  |
+| Terminal       | Opens the Console page (session diagnostics) — lights up with an unreviewed-issue badge when an error or warning is logged |
 
 Grid visibility was moved from a standalone icon-strip toggle into the Grid page itself, consolidating display settings into one place.
 
@@ -276,9 +290,27 @@ The Data page in the Toolbar supports narrowing down the visible point cloud:
 
 - **Class visibility filtering** — individual classification categories can be hidden from the render, each shown with its assigned color swatch
 - **Per-axis numeric filters** — points can be filtered by value range on any of the three axes, using an operator dropdown (>, ≥, <, ≤, =, between) plus one or two value boxes
-- **Point-size scaling** — point size adjusts automatically based on dataset density (denser datasets get smaller points so they don't merge into a blob), with a manual multiplier slider and one-click reset to the automatic size
+- **Point-size scaling** — point size adjusts automatically based on dataset density (denser datasets get smaller points so they don't merge into a blob), with a manual multiplier slider (range configurable via `config.json`'s `limits.pointSizeSlider`) and one-click reset to the automatic size
 
 Rendering is done as a single instanced mesh, so filtering by class, numeric range, or octant isolation doesn't remount or reallocate anything — hidden points are simply excluded from the draw call.
+
+---
+
+## Diagnostics Console
+
+The Console page in the Toolbar (Terminal icon) shows a running log of every diagnostic raised during the session — dataset loads, color-file loads, remapped axes, and any errors or warnings along the way.
+
+Each entry carries a stable, versioned code (e.g. `CSV-002`, `CLR-001`) rather than a free-text message alone, so a specific failure can be referenced consistently regardless of how its wording changes over time. Entries are grouped by severity:
+
+| Severity | Meaning |
+| -------- | ------- |
+| Error    | The operation failed outright (e.g. a CSV with too few numeric columns) |
+| Warning  | The operation succeeded, but some rows were excluded (e.g. a few rows with missing values) |
+| Info     | The operation succeeded cleanly (e.g. a dataset loaded, or axes were remapped) |
+
+- The icon-strip Terminal button shows an unreviewed-issue badge (error/warning count) when the Console hasn't been opened since the last problem was logged; opening the page clears it
+- Each entry can be expanded to show per-row detail — for large exclusion lists, this switches from listing every row to a per-cause summary (e.g. "12 rows: class is empty") so one bad column in a huge file doesn't flood the log
+- The log is capped at a configurable number of entries per session (oldest dropped first) and can be cleared manually
 
 ---
 
@@ -310,8 +342,7 @@ flowchart TB
         OctantGizmo
         CameraRig
     end
-    Store[("Zustand Store: pivot, hoveredPoint, dataPoints, gridSpace, axisLabels, gridVisible, activeTool, hiddenClasses, numericFilters, hiddenTickAxes, scalingMode, customBounds, isolatedOctant, tickDensity")]
-
+    Store[("Zustand Store: pivot, hoveredPoint, dataPoints, gridSpace, axisLabels, gridVisible, activeTool, hiddenClasses, numericFilters, hiddenTickAxes, scalingMode, customBounds, isolatedOctant, tickDensity, logEntries")]
     Toolbar -- "setDataPoints / setScalingMode / setIsolatedOctant" --> Store
     PointCloud -- "setHoveredPoint / setPivot" --> Store
     CameraRig -- "setPivot" --> Store
@@ -407,7 +438,7 @@ orinoco/
 │   │   │
 │   │   └── Toolbar.tsx
 │   │       └── Docked, resizable side panel: CSV loader, origin
-│   │           reset, Data/Grid/Isolate pages
+│   │           reset, Data/Grid/Isolate/Console pages
 │   │
 │   ├── lib/
 │   │   ├── gridSpace.ts
@@ -418,9 +449,18 @@ orinoco/
 │   │   │       CameraRig and OctantGizmo, outside the store
 │   │   ├── classColors.ts
 │   │   │   └── Single source of truth for classification → color mapping
-│   │   └── parseCSV.ts
-│   │       └── Auto-detecting CSV parser — classifies columns,
-│   │           maps them to X/Y/Z/uid/class, validates and reports errors
+│   │   ├── config.ts
+│   │   │   └── Typed loader + validator for config.json — the single
+│   │   │       place deployment-level values are read from
+│   │   ├── errorCodes.ts
+│   │   │   └── Registry of every diagnostic code (CSV-xxx, CLR-xxx)
+│   │   │       plus the AppError helpers that carry one into the UI
+│   │   ├── parseCSV.ts
+│   │   │   └── Auto-detecting CSV parser — classifies columns,
+│   │   │       maps them to X/Y/Z/uid/class, validates and reports errors
+│   │   └── parseColorsCSV.ts
+│   │       └── Parses a colors.csv override file, mapping class names
+│   │           to hex colors with flexible header matching
 │   │
 │   ├── store/
 │   │   └── useStore.ts
@@ -428,7 +468,7 @@ orinoco/
 │   │           dataPoints, gridSpace, axisLabels, gridVisible,
 │   │           activeTool, hiddenClasses, numericFilters,
 │   │           hiddenTickAxes, scalingMode, customBounds,
-│   │           isolatedOctant, tickDensity
+│   │           isolatedOctant, tickDensity, logEntries
 │   │
 │   ├── types.ts
 │   │   └── Shared DataPoint interface, used by the store, parser,
@@ -572,6 +612,7 @@ Managed state:
 - Active axis-scaling mode and custom bounds (`scalingMode`, `customBounds`)
 - Currently isolated octant, if any (`isolatedOctant`)
 - Tick-density target (`tickDensity`)
+- Session diagnostics log — every error/warning/info raised this session (`logEntries`)
 
 ---
 
@@ -610,7 +651,7 @@ npm run lint
 
 ### Lucide React
 
-Icon library used for interface elements, including the toolbar's icon strip (paperclip, reset, pan/orbit toggle, Data/Grid/Isolate page icons).
+Icon library used for interface elements, including the toolbar's icon strip (paperclip, reset, pan/orbit toggle, Data/Grid/Isolate/Console page icons).
 
 ---
 
@@ -642,6 +683,16 @@ Current visualization categories (bundled sample dataset):
 | `zt`       | `#0000dd` |
 
 Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) falls back to a default color rather than failing.
+
+---
+
+# Deployment Configuration
+
+Most values that would otherwise be hardcoded — grid dimensions, point sizing, camera speeds and zoom limits, startup defaults, slider ranges, accepted CSV/color-file header names, and diagnostics log limits — live in a single `config.json` at the project root instead of scattered across component files.
+
+- Vite inlines `config.json` at build time, so changes require a dev-server restart or rebuild to take effect
+- The config's shape is validated at module load — a value that's the right type but a nonsensical setting (e.g. an inverted zoom range, a negative point count) throws a clear error immediately rather than surfacing later as a subtle rendering bug
+- This is aimed at deployment-time tuning, not runtime user preference — the Toolbar's own sliders (point size, tick density) still control per-session values within whatever range `config.json` allows
 
 ---
 
@@ -748,6 +799,8 @@ Pulled directly from [package.json](package.json)
 
 See the [Issues tab](https://github.com/cwheelus/orinoco/issues) for planned work and open feature requests.
 
+- **Retake README screenshots** — the Screenshots section still shows placeholders (`main.png`, `data_info.png`) predating the signed-grid/octant-isolation rework (#42). Needs fresh captures of the main visualization view and the Point Analysis HUD, ideally also covering newer UI (2D camera lock, Diagnostics Console) not shown in any current screenshot.
+
 ---
 
 # Current Development Status
@@ -760,7 +813,10 @@ Project Orinoco is a functional MVP demonstrating:
 - WASD camera navigation with dedicated arrow/space/shift pivot traversal, plus orbit and pan drag modes
 - Navigation guardrails: zoom limits, pivot bounds, and stuck-key protection
 - Dynamic pivot exploration with origin reset and lockstep marker tracking
-- CSV-only dataset loading (no separate hardcoded default), with an auto-detecting parser and clear error handling for malformed or partially invalid files
+- CSV-only dataset loading (no separate hardcoded default), with an auto-detecting parser and clear error handling for malformed or partially invalid files, plus an optional colors.csv override for classification colors
+- A locked, flat top-down camera mode for 2D (Z-less) datasets, with orbit/tilt disabled and full arrow-key panning preserved
+- A session diagnostics Console with stable, coded error/warning/info entries and per-row detail
+- Deployment-level tuning via a validated `config.json` (grid, points, camera, defaults, sliders)
 - A docked, resizable toolbar for data loading, pivot reset, dataset filtering, and grid/scaling/isolation controls
 - Instanced point rendering with count-adaptive sizing for large datasets
 - Real-time metadata inspection, labeled with the active dataset's real column names
