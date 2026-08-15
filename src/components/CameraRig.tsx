@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useStore } from "../store/useStore";
+import { useStore, selectIs2D } from "../store/useStore";
 import { GRID_MAX } from "../lib/gridSpace";
 import { cameraOrientation } from "../lib/cameraSync";
 import { config } from "../lib/config";
@@ -108,6 +108,11 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
   // *external* pivot changes (a data-point click, the reset button) as
   // opposed to our own per-frame writes from arrow traversal / panning.
   const lastStorePivot = useRef(livePivot.current.clone());
+  // Tracks whether the previous frame was in 2D mode, so the flat-facing
+  // camera snap (below) fires exactly once on the 3D→2D transition rather
+  // than fighting normal camera control every frame while 2D is active.
+  // See #62.
+  const was2D = useRef(false);
 
   // Drag-to-pan state. Refs (not state) since they're written on every
   // pointermove during a drag — using React state here would re-render
@@ -323,24 +328,55 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
       lastStorePivot.current.copy(store);
     }
 
+    const is2D = selectIs2D(useStore.getState());
     // 0b. PIVOT TRAVERSAL (arrows / space / shift)
-    // Each axis pairs two keys into a -1/0/+1 direction:
-    //   Left/Right  -> x (orig-bytes axis)
-    //   Space/Shift -> y (invel-pps axis: space rises, shift descends)
-    //   Up/Down     -> z (invel-bpp axis)
+    // 2D: Left/Right -> X, Up/Down -> Y; Space/Shift also move Y.
+    // 3D: Left/Right -> X, Space/Shift -> Y, Up/Down -> Z.
+    // In 2D, Z is not mapped, so Up/Down are redirected to Y.
     // The live pivot and camera move together by the same offset (a
     // rotation-preserving translation). syncPivot() records the write
     // immediately so step 0a doesn't mistake our own change for an
     // external one next frame.
     const move = new THREE.Vector3(
       (heldKeys.arrowright ? 1 : 0) - (heldKeys.arrowleft ? 1 : 0),
-      (heldKeys[" "] ? 1 : 0) - (heldKeys.shift ? 1 : 0),
-      (heldKeys.arrowup ? 1 : 0) - (heldKeys.arrowdown ? 1 : 0),
+      (heldKeys[" "] ? 1 : 0) -
+        (heldKeys.shift ? 1 : 0) +
+        (is2D ? (heldKeys.arrowup ? 1 : 0) - (heldKeys.arrowdown ? 1 : 0) : 0),
+      is2D ? 0 : (heldKeys.arrowup ? 1 : 0) - (heldKeys.arrowdown ? 1 : 0),
     );
     if (move.lengthSq() > 0) {
       move.multiplyScalar(PIVOT_SPEED * delta);
       applyPivotDelta(move);
     }
+
+    // 2D mode disables WASD zoom/orbit here; App.tsx disables
+    // OrbitControls mouse rotation for the same mode. See #62.
+
+    // Snaps the camera to a flat-facing view exactly once, on the
+    // 3D→2D edge — not every frame, which would fight normal camera
+    // control. Preserves the camera's existing distance to the pivot
+    // rather than resetting to an arbitrary zoom level. Doesn't call
+    // syncPivot(): the pivot itself is unchanged, only the camera's
+    // position around it, so the external-pivot-change reconciliation
+    // above has nothing to react to here. camera.lookAt() below already
+    // runs every frame regardless, so no need to call it here too.
+    if (is2D && !was2D.current) {
+      const distance = camera.position.distanceTo(livePivot.current);
+      if (
+        Number.isFinite(distance) &&
+        distance > 1e-5 &&
+        Number.isFinite(camera.position.x) &&
+        Number.isFinite(camera.position.y) &&
+        Number.isFinite(camera.position.z)
+      ) {
+        camera.position.set(
+          livePivot.current.x,
+          livePivot.current.y,
+          livePivot.current.z + distance,
+        );
+      }
+    }
+    was2D.current = is2D;
 
     // 1. ZOOM logic (W/S)
     // Computes the straight-line direction FROM the camera TO the pivot,
@@ -351,10 +387,10 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     const direction = new THREE.Vector3()
       .subVectors(livePivot.current, camera.position)
       .normalize();
-    if (heldKeys.w) {
+    if (!is2D && heldKeys.w) {
       camera.position.addScaledVector(direction, MOVE_SPEED * delta);
     }
-    if (heldKeys.s) {
+    if (!is2D && heldKeys.s) {
       camera.position.addScaledVector(direction, -MOVE_SPEED * delta);
     }
     // Clamp the camera-to-pivot distance to the zoom guard rails (same
@@ -376,7 +412,7 @@ export function CameraRig({ pivotMarkerRef }: CameraRigProps) {
     // Rather than moving in a straight line, this rotates the camera's
     // position around the pivot point on the Y axis (i.e. horizontally,
     // like walking in a circle around a fixed spot).
-    if (heldKeys.a || heldKeys.d) {
+    if (!is2D && (heldKeys.a || heldKeys.d)) {
       // relativePos: the camera's position expressed relative to the
       // pivot (as if the pivot were the origin). Rotating this vector
       // and adding it back to the pivot is the standard way to orbit

@@ -5,7 +5,7 @@ import {
   GRID_MAX as MAX,
   TICK_STEP as STEP,
 } from "../lib/gridSpace";
-import { useStore } from "../store/useStore";
+import { useStore, selectIs2D } from "../store/useStore";
 import { useSceneTheme } from "../hooks/useSceneTheme";
 import { config } from "../lib/config";
 
@@ -69,7 +69,7 @@ export function CartesianGrid() {
   // active column mapping, not the original dataset's shape). Only
   // the box is skipped; the horizontal plane grid still applies to a
   // 2D dataset the same way it does to a 3D one.
-  const is2D = useStore((state) => state.columnMapping?.z == null);
+  const is2D = useStore(selectIs2D);
 
   const planeLines = useMemo(() => {
     const lines: [number, number, number][][] = [];
