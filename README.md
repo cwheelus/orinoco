@@ -127,20 +127,20 @@ flowchart LR
 
 The visualization environment supports analyst-focused navigation. Keyboard behavior depends on whether the dataset has a Z axis mapped (3D mode) or not (2D mode, Z = None) — see 2D Mode below for why.
 
-| Input         | 3D Mode                          | 2D Mode (Z = None)             |
-| ------------- | --------------------------------- | ---------------------------------- |
-| W             | Move toward current pivot         | Disabled                           |
-| S             | Move away from current pivot      | Disabled                           |
-| A             | Orbit left around pivot           | Disabled                           |
-| D             | Orbit right around pivot          | Disabled                           |
-| Left / Right  | Move pivot along the X axis       | Move pivot along the X axis        |
-| Up / Down     | Move pivot along the Z axis       | Move pivot along the Y axis        |
-| Space / Shift | Raise / lower pivot along the Y axis | Raise / lower pivot along the Y axis |
-| Mouse Drag    | Free camera rotation, or pan (translate view), depending on the active tool set in the Toolbar | Pan only — rotation is locked |
-| Mouse Scroll  | Zoom                               | Zoom                               |
-| Mouse Hover   | Inspect point metadata            | Inspect point metadata             |
-| Mouse Click   | Set selected node as new pivot    | Set selected node as new pivot     |
-| Toolbar Reset | Return pivot to origin            | Return pivot to origin             |
+| Input         | 3D Mode                                                                                        | 2D Mode (Z = None)                   |
+| ------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------ |
+| W             | Move toward current pivot                                                                      | Disabled                             |
+| S             | Move away from current pivot                                                                   | Disabled                             |
+| A             | Orbit left around pivot                                                                        | Disabled                             |
+| D             | Orbit right around pivot                                                                       | Disabled                             |
+| Left / Right  | Move pivot along the X axis                                                                    | Move pivot along the X axis          |
+| Up / Down     | Move pivot along the Z axis                                                                    | Move pivot along the Y axis          |
+| Space / Shift | Raise / lower pivot along the Y axis                                                           | Raise / lower pivot along the Y axis |
+| Mouse Drag    | Free camera rotation, or pan (translate view), depending on the active tool set in the Toolbar | Pan only — rotation is locked        |
+| Mouse Scroll  | Zoom                                                                                           | Zoom                                 |
+| Mouse Hover   | Inspect point metadata                                                                         | Inspect point metadata               |
+| Mouse Click   | Set selected node as new pivot                                                                 | Set selected node as new pivot       |
+| Toolbar Reset | Return pivot to origin                                                                         | Return pivot to origin               |
 
 ### 2D Mode
 
@@ -262,14 +262,14 @@ A Blender-style docked side panel provides quick access to data and display cont
 
 **Icon strip contents:**
 
-| Icon           | Action                                                                                         |
-| -------------- | ---------------------------------------------------------------------------------------------- |
-| Paperclip      | Opens the native file picker to load a CSV                                                     |
-| Reset          | Returns the pivot to the origin                                                                |
-| Hand / Pointer | Switches the mouse-drag behavior between orbit (rotate around pivot) and pan (translate view)  |
-| Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling |
-| Grid           | Opens a panel for grid visibility, tick labels, tick density, and scaling mode selection       |
-| Box            | Opens the Isolate page (octant gizmo) — lights up while an octant is isolated                  |
+| Icon           | Action                                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Paperclip      | Opens the native file picker to load a CSV                                                                                 |
+| Reset          | Returns the pivot to the origin                                                                                            |
+| Hand / Pointer | Switches the mouse-drag behavior between orbit (rotate around pivot) and pan (translate view)                              |
+| Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling                             |
+| Grid           | Opens a panel for grid visibility, tick labels, tick density, and scaling mode selection                                   |
+| Box            | Opens the Isolate page (octant gizmo) — lights up while an octant is isolated                                              |
 | Terminal       | Opens the Console page (session diagnostics) — lights up with an unreviewed-issue badge when an error or warning is logged |
 
 Grid visibility was moved from a standalone icon-strip toggle into the Grid page itself, consolidating display settings into one place.
@@ -302,11 +302,11 @@ The Console page in the Toolbar (Terminal icon) shows a running log of every dia
 
 Each entry carries a stable, versioned code (e.g. `CSV-002`, `CLR-001`) rather than a free-text message alone, so a specific failure can be referenced consistently regardless of how its wording changes over time. Entries are grouped by severity:
 
-| Severity | Meaning |
-| -------- | ------- |
-| Error    | The operation failed outright (e.g. a CSV with too few numeric columns) |
+| Severity | Meaning                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------ |
+| Error    | The operation failed outright (e.g. a CSV with too few numeric columns)                    |
 | Warning  | The operation succeeded, but some rows were excluded (e.g. a few rows with missing values) |
-| Info     | The operation succeeded cleanly (e.g. a dataset loaded, or axes were remapped) |
+| Info     | The operation succeeded cleanly (e.g. a dataset loaded, or axes were remapped)             |
 
 - The icon-strip Terminal button shows an unreviewed-issue badge (error/warning count) when the Console hasn't been opened since the last problem was logged; opening the page clears it
 - Each entry can be expanded to show per-row detail — for large exclusion lists, this switches from listing every row to a per-cause summary (e.g. "12 rows: class is empty") so one bad column in a huge file doesn't flood the log
@@ -756,6 +756,16 @@ npm run build
 npm run lint
 ```
 
+## Run Tests
+
+```bash
+npm test
+```
+
+Runs the automated Vitest suite (70 tests covering CSV/color-file parsing, filters, and truncation logic).
+
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
+
 ## Test Data
 
 Sample CSV files for manually exercising the loader live in `test-data/`:
@@ -792,6 +802,7 @@ Pulled directly from [package.json](package.json)
 | @types/papaparse (dev) | ^5.5.2   |
 | lucide-react           | ^1.25.0  |
 | oxlint (dev)           | ^1.71.0  |
+| vitest (dev)           | ^4.1.10  |
 
 ---
 
@@ -821,6 +832,7 @@ Project Orinoco is a functional MVP demonstrating:
 - Instanced point rendering with count-adaptive sizing for large datasets
 - Real-time metadata inspection, labeled with the active dataset's real column names
 - SOC-style analyst interface
+- An automated Vitest regression suite (70 tests) covering CSV/color-file parsing, numeric filters, and display truncation — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ---
 
