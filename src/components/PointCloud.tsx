@@ -32,7 +32,7 @@ function clamp(v: number, lo: number, hi: number) {
 // Applies one numeric filter to a single value. An "off" op, or a value
 // box that isn't a finite number (empty, "-", mid-typing), means "no
 // filter" — the point passes on that axis.
-function passesNumeric(value: number, f: NumericFilter): boolean {
+export function passesNumeric(value: number, f: NumericFilter): boolean {
   if (f.op === "off") return true;
 
   // Inclusive range. Either bound left blank/invalid is simply ignored,
@@ -41,6 +41,19 @@ function passesNumeric(value: number, f: NumericFilter): boolean {
   if (f.op === "between") {
     const lo = parseFloat(f.value);
     const hi = parseFloat(f.value2);
+
+    // An inverted range (min > max) is a user-input error, not a
+    // legitimate "match nothing" filter — the UI's min/max boxes have
+    // no guard against an analyst typing them backwards. Applying both
+    // bounds literally in that case would silently exclude every
+    // point with zero indication why (found during #59 testing).
+    // Swap the effective bounds so the filter behaves the way an
+    // analyst almost certainly intended, rather than failing silently.
+    if (Number.isFinite(lo) && Number.isFinite(hi) && lo > hi) {
+      if (value < hi) return false;
+      if (value > lo) return false;
+      return true;
+    }
 
     if (Number.isFinite(lo) && value < lo) return false;
     if (Number.isFinite(hi) && value > hi) return false;

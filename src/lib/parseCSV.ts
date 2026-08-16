@@ -72,6 +72,26 @@ export interface DatasetSchema {
   dimension: 2 | 3;
 }
 
+export interface ColumnInterpretation {
+  column: string;
+  numericCount: number;
+  sampledCount: number;
+  sampleBadValues: string[];
+}
+
+export interface ParseInterpretation {
+  numericColumns: string[];
+  // Only columns classified as TEXT — i.e. the ones that failed
+  // numeric classification. The parser reports raw evidence; it does
+  // not judge which of these are "real" problems (a borderline
+  // near-miss column) vs. ordinary metadata (department names, etc).
+  // See #59: numericCount === 0 columns are indistinguishable from
+  // genuine text metadata at this layer — that decision belongs to
+  // the consumer (useStore.ts), not the parser.
+  columns: ColumnInterpretation[];
+  dimension: 2 | 3;
+}
+
 export interface ParseResult {
   // Original parsed CSV rows retained so axis selections can be
   // changed without reparsing or re-uploading the dataset. See
@@ -95,6 +115,7 @@ export interface ParseResult {
   // displays, so an analyst can find and fix the offending cell rather
   // than just being told a count.
   skippedRows: SkippedRow[];
+  interpretation: ParseInterpretation;
 }
 
 // One excluded row. `row` matches what the analyst sees in a
@@ -159,13 +180,31 @@ function isNumeric(value: string): boolean {
   return value.trim() !== "" && Number.isFinite(Number(value));
 }
 
+// Per-column classification diagnostics: how many of the sampled
+// non-empty values parsed as numbers, out of how many were sampled,
+// plus a couple of the actual offending values. Kept alongside the
+// numeric/text split so a rejection error can point an analyst at
+// exactly what to fix in THEIR OWN file — the same precision row-skip
+// messages already give for individual bad cells (e.g. 'x is not a
+// number ("not-a-number")'). The app is not compensating for bad
+// data here; it's telling the analyst precisely where to look so
+// they can correct their own CSV. See #59.
+interface ColumnRatio {
+  numericCount: number;
+  sampledCount: number;
+  sampleBadValues: string[];
+}
+
+const MAX_SAMPLE_BAD_VALUES = 2;
+
 function classifyColumns(
   headers: string[],
   rows: Record<string, string>[],
-): { numeric: string[]; text: string[] } {
+): { numeric: string[]; text: string[]; ratios: Record<string, ColumnRatio> } {
   const sample = rows.slice(0, SAMPLE_SIZE);
   const numeric: string[] = [];
   const text: string[] = [];
+  const ratios: Record<string, ColumnRatio> = {};
 
   for (const header of headers) {
     const values = sample
@@ -173,9 +212,22 @@ function classifyColumns(
       .filter((v) => v !== undefined && v.trim() !== "");
     if (values.length === 0) {
       text.push(header); // no data to judge by; default to text
+      ratios[header] = {
+        numericCount: 0,
+        sampledCount: 0,
+        sampleBadValues: [],
+      };
       continue;
     }
     const numericCount = values.filter(isNumeric).length;
+    const sampleBadValues = values
+      .filter((v) => !isNumeric(v))
+      .slice(0, MAX_SAMPLE_BAD_VALUES);
+    ratios[header] = {
+      numericCount,
+      sampledCount: values.length,
+      sampleBadValues,
+    };
     if (numericCount / values.length >= NUMERIC_THRESHOLD) {
       numeric.push(header);
     } else {
@@ -183,7 +235,28 @@ function classifyColumns(
     }
   }
 
-  return { numeric, text };
+  return { numeric, text, ratios };
+}
+
+// Formats classification ratios into detail lines an analyst can act
+// on, e.g. 'y: 2/3 sampled values numeric (67%) — non-numeric values
+// found: "invalid-y"'.
+function describeColumnRatios(
+  columns: string[],
+  ratios: Record<string, ColumnRatio>,
+): string[] {
+  return columns.map((col) => {
+    const r = ratios[col];
+    if (!r || r.sampledCount === 0) {
+      return `${col}: no sampled values`;
+    }
+    const pct = Math.round((r.numericCount / r.sampledCount) * 100);
+    const examples =
+      r.sampleBadValues.length > 0
+        ? ` — non-numeric values found: ${r.sampleBadValues.map((v) => `"${v}"`).join(", ")}`
+        : "";
+    return `${col}: ${r.numericCount}/${r.sampledCount} sampled values numeric (${pct}%)${examples}`;
+  });
 }
 
 // Among candidate text columns, picks the one whose values are most
@@ -257,10 +330,14 @@ export function buildPoints(
     if (!uid) return skip(`${mapping.uid} is empty`);
     if (!className) return skip(`${mapping.className} is empty`);
     if (!Number.isFinite(x)) {
-      return skip(`${mapping.x} is not a number (${echoValue(row[mapping.x])})`);
+      return skip(
+        `${mapping.x} is not a number (${echoValue(row[mapping.x])})`,
+      );
     }
     if (!Number.isFinite(y)) {
-      return skip(`${mapping.y} is not a number (${echoValue(row[mapping.y])})`);
+      return skip(
+        `${mapping.y} is not a number (${echoValue(row[mapping.y])})`,
+      );
     }
     if (!is2D && !Number.isFinite(z)) {
       return skip(
@@ -299,7 +376,7 @@ export function parseCSV(file: File): Promise<ParseResult> {
           return;
         }
 
-        const { numeric, text } = classifyColumns(headers, rows);
+        const { numeric, text, ratios } = classifyColumns(headers, rows);
 
         // Need at least 2 numeric columns to visualize a dataset.
         // - 2 numeric columns: treated as a 2D dataset with Z synthesized as 0.
@@ -317,7 +394,10 @@ export function parseCSV(file: File): Promise<ParseResult> {
               `Expected at least ${MIN_NUMERIC_COLUMNS} numeric columns to plot, found ${numeric.length}.`,
               [
                 `Numeric columns: ${numeric.join(", ") || "none"}`,
-                `Text columns: ${text.join(", ") || "none"}`,
+                ...describeColumnRatios(text, ratios).map(
+                  (line) =>
+                    `Excluded as text — check for typos or inconsistent formatting: ${line}`,
+                ),
                 `A column counts as numeric when at least ${Math.round(NUMERIC_THRESHOLD * 100)}% of its first ${SAMPLE_SIZE} non-empty values parse as numbers.`,
               ],
             ),
@@ -330,7 +410,13 @@ export function parseCSV(file: File): Promise<ParseResult> {
             appError(
               CODES.CSV_NO_TEXT_COLUMNS,
               "No text/label columns found — need at least one for classification.",
-              [`All ${headers.length} columns classified as numeric.`],
+              [
+                `All ${headers.length} columns classified as numeric.`,
+                `If a column is meant to hold identifiers or labels, check for stray numeric-looking values in it.`,
+                ...describeColumnRatios(numeric, ratios).map(
+                  (line) => `Numeric: ${line}`,
+                ),
+              ],
             ),
           );
           return;
@@ -394,7 +480,26 @@ export function parseCSV(file: File): Promise<ParseResult> {
           return;
         }
 
-        resolve({ rows, points, mapping, schema, metadata, skippedRows });
+        const interpretation: ParseInterpretation = {
+          numericColumns: numeric,
+          columns: text.map((column) => ({
+            column,
+            numericCount: ratios[column].numericCount,
+            sampledCount: ratios[column].sampledCount,
+            sampleBadValues: ratios[column].sampleBadValues,
+          })),
+          dimension: is2D ? 2 : 3,
+        };
+
+        resolve({
+          rows,
+          points,
+          mapping,
+          schema,
+          metadata,
+          skippedRows,
+          interpretation,
+        });
       },
       error: (error) =>
         reject(

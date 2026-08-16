@@ -206,6 +206,13 @@ interface VisualizerState {
   // if nothing is being hovered. Read by App.tsx to conditionally show
   // the "Point Analysis" HUD panel.
   hoveredPoint: DataPoint | null;
+  // Which axis's label is currently being hovered ("x"/"y"/"z"), or
+  // null. Axis labels are truncated for display (see truncateLabel.ts)
+  // per #59 — this drives an HTML tooltip in App.tsx showing the full,
+  // untruncated axisLabels[axis] value on hover, since drei's <Text>
+  // renders into the WebGL scene and has no native DOM title
+  // attribute. See Axes.tsx's onPointerOver/onPointerOut.
+  hoveredAxis: AxisKey | null;
   // Whether the Cartesian grid (box + tick lines) is currently
   // rendered. Toggled from the Toolbar's grid on/off icon — see
   // App.tsx, which conditionally renders <CartesianGrid /> based on
@@ -308,6 +315,9 @@ interface VisualizerState {
   // Updates hoveredPoint. Called from PointCloud.tsx's onPointerOver/
   // onPointerOut handlers.
   setHoveredPoint: (p: DataPoint | null) => void;
+  // Updates hoveredAxis. Called from Axes.tsx's onPointerOver/
+  // onPointerOut handlers on each axis's <Text> label.
+  setHoveredAxis: (axis: AxisKey | null) => void;
   // Flips gridVisible. Called from the Toolbar's grid toggle button.
   toggleGrid: () => void;
   // Flips darkMode. Called from the Toolbar's dark/light toggle button.
@@ -371,6 +381,7 @@ export const useStore = create<VisualizerState>((set) => ({
   pivot: [0, 0, 0],
   // Nothing is hovered when the app first loads.
   hoveredPoint: null,
+  hoveredAxis: null,
   // Startup state — all from config.json's `defaults` section.
   // Grid starts visible.
   gridVisible: config.defaults.gridVisible,
@@ -500,6 +511,7 @@ export const useStore = create<VisualizerState>((set) => ({
     }),
   setPivot: (pivot) => set({ pivot }),
   setHoveredPoint: (hoveredPoint) => set({ hoveredPoint }),
+  setHoveredAxis: (hoveredAxis) => set({ hoveredAxis }),
   toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
   toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
   setActiveTool: (activeTool) => set({ activeTool }),

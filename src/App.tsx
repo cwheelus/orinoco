@@ -16,6 +16,7 @@ import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
 import { parseColorsCSV } from "./lib/parseColorsCSV";
 import { getClassColor } from "./lib/classColors";
+import { truncateLabel } from "./lib/truncateLabel";
 import { SURFACE, PANEL_APP, TEXT, ERROR, WARNING, KBD } from "./lib/theme";
 import { config } from "./lib/config";
 import { appError, describeError, CODES } from "./lib/errorCodes";
@@ -124,6 +125,9 @@ function App() {
   // The data point object currently under the cursor, or null if
   // nothing is being hovered. Drives the conditional HUD panel below.
   const hoveredPoint = useStore((state) => state.hoveredPoint);
+  // Which axis label is hovered, if any — drives the full-name
+  // tooltip below, since Axes.tsx's WebGL Text has no native title.
+  const hoveredAxis = useStore((state) => state.hoveredAxis);
   // Which real column is plotted on each axis (e.g. "orig_bytes"),
   // used below so the Point Analysis panel's metric labels always
   // match whatever's actually loaded, instead of hardcoded letters.
@@ -204,8 +208,15 @@ function App() {
   //     generic "something went wrong."
   const handleFileSelected = async (file: File) => {
     try {
-      const { rows, points, mapping, schema, metadata, skippedRows } =
-        await parseCSV(file);
+      const {
+        rows,
+        points,
+        mapping,
+        schema,
+        metadata,
+        skippedRows,
+        interpretation,
+      } = await parseCSV(file);
       setDataPoints(
         points,
         {
@@ -229,12 +240,35 @@ function App() {
           formatSkippedRows(skippedRows),
         );
       } else {
+        // Product decision for #59: only surface columns with SOME
+        // numeric signal that still failed classification. Columns at
+        // numericCount === 0 are indistinguishable from ordinary text
+        // metadata at the parser level and are intentionally not
+        // surfaced — known limitation, not a bug. See parseCSV.ts's
+        // ParseInterpretation for what the parser actually knows.
+        const interpretationDetails = interpretation.columns
+          .filter(
+            ({ column, numericCount }) =>
+              column !== mapping.uid &&
+              column !== mapping.className &&
+              numericCount > 0,
+          )
+          .map(
+            ({ column, numericCount, sampledCount, sampleBadValues }) =>
+              `Column "${column}" excluded from numeric classification: ` +
+              `${numericCount}/${sampledCount} sampled values numeric` +
+              (sampleBadValues.length
+                ? ` — examples: ${sampleBadValues.map((v) => `"${v}"`).join(", ")}`
+                : ""),
+          );
+
         pushLog(
           CODES.CSV_LOADED,
           `${file.name}: loaded ${points.length} point(s) from ${rows.length} row(s).`,
           [
             `Axes: ${mapping.x} / ${mapping.y} / ${mapping.z ?? "none (2D)"}`,
             `Identity: ${mapping.uid} · Class: ${mapping.className}`,
+            ...interpretationDetails,
           ],
         );
       }
@@ -452,9 +486,7 @@ function App() {
             <div className="flex items-center justify-between gap-3 mb-1">
               <p
                 className={`text-[10px] font-bold uppercase ${
-                  activeAlert.severity === "error"
-                    ? ERROR.label
-                    : WARNING.label
+                  activeAlert.severity === "error" ? ERROR.label : WARNING.label
                 }`}
               >
                 <span className="font-mono">{activeAlert.code}</span>{" "}
@@ -477,6 +509,22 @@ function App() {
                 Open the Console tab for details.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Axis label tooltip: shows the full, untruncated axis name
+            on hover, since Axes.tsx truncates long names for display
+            (#59) and its WebGL <Text> has no native DOM title. Fixed
+            position near the top rather than tracking cursor/3D screen
+            coordinates — simpler, and axis labels don't move around
+            the viewport the way individual data points do. */}
+        {hoveredAxis && (
+          <div
+            className={`pointer-events-none fixed top-20 left-1/2 -translate-x-1/2 px-3 py-1.5 ${SURFACE.card} border-l-2 border-blue-500 ring-1 ring-white/10 shadow-2xl z-20`}
+          >
+            <span className={`text-[11px] font-mono ${TEXT.onFilled}`}>
+              {axisLabels[hoveredAxis]}
+            </span>
           </div>
         )}
 
@@ -507,13 +555,13 @@ function App() {
                   </span>
                 </div>
                 <div
-                  className={`flex justify-between border-b ${PANEL_APP.hairline} pb-1`}
+                  className={`flex justify-between items-start gap-2 border-b ${PANEL_APP.hairline} pb-1 min-w-0`}
                 >
-                  <span className={`${TEXT.faint} text-[10px]`}>
+                  <span className={`${TEXT.faint} text-[10px] shrink-0`}>
                     Classification
                   </span>
                   <span
-                    className="text-[10px] font-bold uppercase"
+                    className="text-[10px] font-bold uppercase break-words min-w-0 text-left"
                     style={{
                       color: getClassColor(
                         hoveredPoint.className,
@@ -561,12 +609,13 @@ function App() {
                       }`}
                     >
                       <span
-                        className={`${TEXT.faint} text-[10px] truncate max-w-[60%]`}
-                        title={axisLabels[axis]}
+                        className={`${TEXT.faint} text-[10px] break-words max-w-[60%] min-w-0`}
                       >
                         {axisLabels[axis]}
                       </span>
-                      <span className={`${TEXT.onFilled} font-mono text-xs`}>
+                      <span
+                        className={`${TEXT.onFilled} font-mono text-xs shrink-0`}
+                      >
                         {hoveredPoint[axis].toFixed(3)}
                       </span>
                     </div>
@@ -677,8 +726,9 @@ function App() {
                     />
                     <span
                       className={`text-[10px] uppercase font-bold ${TEXT.emphasis} tracking-widest`}
+                      title={className}
                     >
-                      {className}
+                      {truncateLabel(className)}
                     </span>
                   </div>
                 );
