@@ -386,7 +386,7 @@ describe("ParseResult.interpretation", () => {
     });
   });
 
-  it("small-file total failure: y (0%) present in columns, but preserved for the consumer to decide", async () => {
+  it("small-file total failure: y (0%) present in columns, and now actively surfaced by the consumer (App.tsx no longer requires numericCount > 0 to report a column — see #59 resolution)", async () => {
     const csv = [
       "uid,class,x,y,z",
       "u1,A,1,bad,3",

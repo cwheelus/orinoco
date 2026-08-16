@@ -223,22 +223,19 @@ Confirmed with fixture files in the running application:
 | ----------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | 3 rows, 1 invalid value in one column     | 2/3 = 67%                     | The column is reclassified as text; the dataset loads as 2D using the remaining numeric columns; no warning is produced |
 | 10 rows, 1 invalid value in one column    | 9/10 = 90%                    | The column remains numeric; the single invalid row is skipped with a `CSV-050` warning naming the affected cell         |
-| 3 rows, every value in one column invalid | 0/3 = 0%                      | Identical silent result to the 67% case, logged identically to a fully valid file (`CSV-100`)                           |
+| 3 rows, every value in one column invalid | 0/3 = 0%     | Now reported: `Column "y": text (0/3 sampled values numeric)` appears in the `CSV-100` Console entry, same as any partial-failure case                          |
 
-Fix applied (not deferred): `parseCSV.ts`'s `ParseInterpretation` contract now reports, on every successful load, which columns were classified as text and why — their numeric ratio and example invalid values. `App.tsx` surfaces this for any column with `numericCount > 0` (a partial rather than total failure) as part of the `CSV-100`/`CSV-050` Console entry.
+Fix applied: `parseCSV.ts`'s `ParseInterpretation` contract reports, on every successful load, which columns were classified as text and why — their numeric ratio and example invalid values. This part was never in question.
 
-### Why it remains unresolved
+### Resolution — classification vs. reporting
 
-The fix above makes the existing classification decision visible. It does not change whether a column narrowly missing the 90% threshold is reclassified in the first place. A column at exactly 0% numeric is structurally indistinguishable, at the parser level, from ordinary text metadata that was never intended as an axis — both have `numericCount === 0`, and the parser has no basis for inferring intent.
+Two separable questions existed here, and only one was actually open:
 
-### Decision dependency — Known Unresolved
+1. **Should the 90% classification threshold itself change** (e.g. become more lenient for small files)? This was never implemented and remains untouched — `classifyColumns`'s threshold-based logic is exactly as it was. Confirmed with the team as the intended behavior: users are responsible for validating and cleaning data before upload; the app should not try to infer intent or compensate for ambiguous small files.
 
-This is an open product decision between two options:
+2. **Should a column at 0% numeric be reported, the same way a partial-failure column already is?** This was the actual open question, and it is now resolved: yes. `App.tsx`'s `interpretationDetails` filter no longer requires `numericCount > 0` — every text column beyond `uid`/`class` is now reported, including columns with zero numeric signal. A 0%-numeric column now produces a Console note (`Column "y": text (0/N sampled values numeric)`) rather than logging identically to a clean file.
 
-- **Option A** (current behavior): classification remains threshold-based as-is; users are responsible for validating and cleaning data before upload
-- **Option B**: classification becomes more lenient for small or ambiguous files
-
-Not yet confirmed. Two `it.fails(...)` tests in `parseCSV.test.ts` assert the desired Option-B behavior and are expected to fail under the current implementation — this is intentional; see the comments accompanying those tests. These tests should not be made to pass by loosening their assertions. Either the classification logic changes to match Option B, or the tests are rewritten to assert current behavior explicitly once Option A is confirmed. Neither has occurred yet.
+**Net effect:** classification behavior is unchanged (a column can still silently become "just text" if it misses the threshold), but _reporting_ is now unconditional — a successful load never omits mention of a text column's presence and ratio, regardless of how severe the mismatch is. This was confirmed directly with the team: informing the analyst should never depend on severity.
 
 ---
 

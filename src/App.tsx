@@ -275,26 +275,29 @@ function App() {
           formatSkippedRows(skippedRows),
         );
       } else {
-        // Product decision for #59: only surface columns with SOME
-        // numeric signal that still failed classification. Columns at
-        // numericCount === 0 are indistinguishable from ordinary text
-        // metadata at the parser level and are intentionally not
-        // surfaced — known limitation, not a bug. See parseCSV.ts's
+        // Product decision (updated): every text column beyond uid/class
+        // is reported, including columns at numericCount === 0 — a
+        // successful load should never silently drop a column with zero
+        // indication, regardless of severity. This deliberately includes
+        // ordinary text metadata (department, description, etc.) alongside
+        // genuine near-miss/garbled-axis columns, since the parser has no
+        // way to distinguish the two — matching how established tools
+        // (pandas' DtypeWarning, Tableau's Data Interpreter) prefer
+        // over-informing to silent gaps. See parseCSV.ts's
         // ParseInterpretation for what the parser actually knows.
         const interpretationDetails = interpretation.columns
           .filter(
-            ({ column, numericCount }) =>
-              column !== mapping.uid &&
-              column !== mapping.className &&
-              numericCount > 0,
+            ({ column }) =>
+              column !== mapping.uid && column !== mapping.className,
           )
-          .map(
-            ({ column, numericCount, sampledCount, sampleBadValues }) =>
-              `Column "${column}" excluded from numeric classification: ` +
-              `${numericCount}/${sampledCount} sampled values numeric` +
-              (sampleBadValues.length
-                ? ` — examples: ${sampleBadValues.map((v) => `"${v}"`).join(", ")}`
-                : ""),
+          .map(({ column, numericCount, sampledCount, sampleBadValues }) =>
+            numericCount === 0
+              ? `Column "${column}": text (0/${sampledCount} sampled values numeric)`
+              : `Column "${column}" excluded from numeric classification: ` +
+                `${numericCount}/${sampledCount} sampled values numeric` +
+                (sampleBadValues.length
+                  ? ` — examples: ${sampleBadValues.map((v) => `"${v}"`).join(", ")}`
+                  : ""),
           );
 
         pushLog(
