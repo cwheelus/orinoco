@@ -14,7 +14,7 @@ import {
   Moon,
   Terminal,
 } from "lucide-react";
-import { useStore } from "../store/useStore";
+import { useStore, selectIs2D } from "../store/useStore";
 import type {
   AxisKey,
   FilterOp,
@@ -228,6 +228,7 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
   const datasetSchema = useStore((state) => state.datasetSchema);
   const columnMapping = useStore((state) => state.columnMapping);
   const setColumnMapping = useStore((state) => state.setColumnMapping);
+  const is2D = useStore(selectIs2D);
   const availableClasses = useStore((state) => state.availableClasses);
   const hiddenClasses = useStore((state) => state.hiddenClasses);
   const numericFilters = useStore((state) => state.numericFilters);
@@ -555,9 +556,13 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
           onClick={() => setActiveTool(activeTool === "pan" ? "orbit" : "pan")}
           className={iconButtonClass(activeTool === "pan")}
           title={
-            activeTool === "pan"
-              ? "Switch to orbit (rotate)"
-              : "Switch to pan (drag to move view)"
+            is2D
+              ? activeTool === "pan"
+                ? "Pan mode — 2D camera locked"
+                : "2D mode — orbit disabled; click to switch to pan"
+              : activeTool === "pan"
+                ? "Switch to orbit (rotate)"
+                : "Switch to pan (drag to move view)"
           }
         >
           {activeTool === "pan" ? (
@@ -735,7 +740,16 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                       );
                     })}
                   </div>
-                  
+
+                  {is2D && (
+                    <p
+                      role="status"
+                      aria-label="2D mode: camera locked"
+                      className="text-[9px] font-mono text-blue-400 mb-2"
+                    >
+                      2D · Camera Locked
+                    </p>
+                  )}
                   {/* Manual axis mapping: lets the analyst override
                       which CSV columns drive the plotted X/Y/Z, instead
                       of always using parseCSV's first-2/3-numeric-
@@ -1121,9 +1135,8 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                 </div>
                 {logEntries.length === 0 ? (
                   <p className={`text-[10px] ${TEXT.muted}`}>
-                    No diagnostics yet. Loading a dataset or color file
-                    records the result here — including the exact rows
-                    excluded and why.
+                    No diagnostics yet. Loading a dataset or color file records
+                    the result here — including the exact rows excluded and why.
                   </p>
                 ) : (
                   <>
