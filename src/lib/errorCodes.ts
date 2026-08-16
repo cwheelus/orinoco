@@ -100,10 +100,26 @@ export const CODES = {
     severity: "warning",
     title: "Color rows excluded",
   },
+  // A color override parsed successfully but its class name doesn't
+  // match any class in the currently loaded dataset — almost always a
+  // typo, or a colors.csv prepared for a different dataset. See #59.
+  CLR_UNMATCHED_CLASS: {
+    code: "CLR-051",
+    severity: "warning",
+    title: "Unmatched class override",
+  },
   CLR_LOADED: {
     code: "CLR-100",
     severity: "info",
     title: "Color mapping loaded",
+  },
+  // colors.csv loaded before any dataset — the overrides parsed fine,
+  // but there's nothing to validate class names against yet. Not a
+  // fault; just deferred. See #59.
+  CLR_VALIDATION_DEFERRED: {
+    code: "CLR-101",
+    severity: "info",
+    title: "Color validation deferred",
   },
 
   // --- Catch-all --------------------------------------------------------
@@ -157,7 +173,10 @@ export function isAppError(err: unknown): err is AppError {
  * stray throw still lands in the console with a code rather than
  * vanishing or arriving as a bare string.
  */
-export function describeError(err: unknown, fallbackMessage: string): {
+export function describeError(
+  err: unknown,
+  fallbackMessage: string,
+): {
   appCode: ErrorCode;
   message: string;
   detail?: string[];

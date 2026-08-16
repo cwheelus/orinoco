@@ -16,6 +16,7 @@ import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
 import { parseColorsCSV } from "./lib/parseColorsCSV";
 import { getClassColor } from "./lib/classColors";
+import { getUnmatchedColorOverrides } from "./lib/colorValidation";
 import { truncateLabel } from "./lib/truncateLabel";
 import { SURFACE, PANEL_APP, TEXT, ERROR, WARNING, KBD } from "./lib/theme";
 import { config } from "./lib/config";
@@ -141,8 +142,12 @@ function App() {
   // Analyst's manual color picks for classes — passed to getClassColor()
   // as the highest-precedence source. Populated by the colors.csv
   // loader (see lib/parseColorsCSV.ts), not an in-app picker — see
-  // Charles's original spec and the #43 discussion for why.
+  // original spec and the #43 discussion.
   const classColorOverrides = useStore((state) => state.classColorOverrides);
+  // Class names actually present in the loaded dataset — used to
+  // cross-check colors.csv overrides against real classes when
+  // colors load AFTER a dataset already exists. See #59.
+  const availableClasses = useStore((state) => state.availableClasses);
   // Non-numeric field values for the currently-hovered point, keyed
   // by uid — see lib/parseCSV.ts's ParseResult.metadata for the
   // shape. null until the first dataset loads.
@@ -229,6 +234,36 @@ function App() {
         rows,
         mapping,
       );
+
+      // #59: re-validate any ALREADY-LOADED colors.csv overrides
+      // against THIS newly parsed dataset — never against the
+      // previous one (points, not dataPoints/availableClasses, which
+      // haven't recomputed in this synchronous handler yet). Silent
+      // on a match: CLR-100 means "colors.csv loaded successfully,"
+      // not "an existing override set was re-checked" — those are
+      // different events. Diagnostics are historical, so an earlier
+      // CLR-051 from a prior dataset is never retroactively cleared;
+      // this only ever adds a NEW entry if THIS dataset has a mismatch.
+      if (Object.keys(classColorOverrides).length > 0) {
+        const newAvailableClasses = [
+          ...new Set(points.map((p) => p.className)),
+        ];
+        const unmatched = getUnmatchedColorOverrides(
+          classColorOverrides,
+          newAvailableClasses,
+        );
+        if (unmatched.length > 0) {
+          pushLog(
+            CODES.CLR_UNMATCHED_CLASS,
+            `${unmatched.length} color override(s) don't match any class in ${file.name}.`,
+            [
+              `Unmatched (check for typos): ${unmatched.join(", ")}`,
+              `Loaded dataset classes: ${newAvailableClasses.join(", ")}`,
+            ],
+          );
+        }
+      }
+
       if (skippedRows.length > 0) {
         // Not a hard failure — the file loaded, just with some rows
         // excluded. Logged as a WARNING so the banner shows it without
@@ -294,18 +329,48 @@ function App() {
       const { overrides, skippedRows } = await parseColorsCSV(file);
       setClassColorOverrides(overrides);
       const applied = Object.keys(overrides).length;
+      // Single source of truth for "is a dataset currently loaded" —
+      // dataPoints, not availableClasses (which is derived FROM
+      // dataPoints and shouldn't also be relied on as the load
+      // signal — see #59 discussion). Any successfully loaded
+      // dataset is structurally guaranteed at least one point.
+      const datasetLoaded = dataPoints.length > 0;
+
       if (skippedRows.length > 0) {
         pushLog(
           CODES.CLR_ROWS_SKIPPED,
           `${file.name}: applied ${applied} color override(s), excluded ${skippedRows.length} row(s).`,
           formatSkippedRows(skippedRows),
         );
-      } else {
+      }
+
+      if (!datasetLoaded) {
         pushLog(
-          CODES.CLR_LOADED,
-          `${file.name}: applied ${applied} color override(s).`,
+          CODES.CLR_VALIDATION_DEFERRED,
+          `${file.name}: applied ${applied} color override(s). Load a dataset before validating color overrides.`,
           Object.entries(overrides).map(([cls, hex]) => `${cls} → ${hex}`),
         );
+      } else {
+        const unmatched = getUnmatchedColorOverrides(
+          overrides,
+          availableClasses,
+        );
+        if (unmatched.length > 0) {
+          pushLog(
+            CODES.CLR_UNMATCHED_CLASS,
+            `${unmatched.length} of ${applied} color override(s) don't match any loaded class.`,
+            [
+              `Unmatched (check for typos): ${unmatched.join(", ")}`,
+              `Loaded dataset classes: ${availableClasses.join(", ")}`,
+            ],
+          );
+        } else if (skippedRows.length === 0) {
+          pushLog(
+            CODES.CLR_LOADED,
+            `${file.name}: applied ${applied} color override(s).`,
+            Object.entries(overrides).map(([cls, hex]) => `${cls} → ${hex}`),
+          );
+        }
       }
     } catch (err) {
       const { appCode, message, detail } = describeError(
