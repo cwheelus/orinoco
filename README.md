@@ -311,6 +311,7 @@ Each entry carries a stable, versioned code (e.g. `CSV-002`, `CLR-001`) rather t
 - The icon-strip Terminal button shows an unreviewed-issue badge (error/warning count) when the Console hasn't been opened since the last problem was logged; opening the page clears it
 - Each entry can be expanded to show per-row detail — for large exclusion lists, this switches from listing every row to a per-cause summary (e.g. "12 rows: class is empty") so one bad column in a huge file doesn't flood the log
 - The log is capped at a configurable number of entries per session (oldest dropped first) and can be cleared manually
+- Color-file overrides are validated against the currently loaded dataset's actual classes: an override whose class name doesn't match anything in the dataset is flagged as a warning rather than applying silently
 
 ---
 
@@ -459,16 +460,24 @@ orinoco/
 │   │   │   └── Auto-detecting CSV parser — classifies columns,
 │   │   │       maps them to X/Y/Z/uid/class, validates and reports errors
 │   │   └── parseColorsCSV.ts
-│   │       └── Parses a colors.csv override file, mapping class names
-│   │           to hex colors with flexible header matching
+│   │   ├── parseColorsCSV.ts
+│   │   │   └── Parses a colors.csv override file, mapping class names
+│   │   │       to hex colors with flexible header matching
+│   │   ├── colorValidation.ts
+│   │   │   └── Cross-checks color overrides against the loaded
+│   │   │       dataset's actual classes; flags unmatched overrides
+│   │   └── truncateLabel.ts
+│   │       └── 8-character display truncation for long axis/class
+│   │           names, with separator-aware splitting
 │   │
 │   ├── store/
 │   │   └── useStore.ts
 │   │       └── Global visualization state: pivot, hoveredPoint,
-│   │           dataPoints, gridSpace, axisLabels, gridVisible,
-│   │           activeTool, hiddenClasses, numericFilters,
+│   │           hoveredAxis, dataPoints, gridSpace, axisLabels,
+│   │           gridVisible, activeTool, hiddenClasses, numericFilters,
 │   │           hiddenTickAxes, scalingMode, customBounds,
-│   │           isolatedOctant, tickDensity, logEntries
+│   │           isolatedOctant, tickDensity, logEntries,
+│   │           classColorOverrides
 │   │
 │   ├── types.ts
 │   │   └── Shared DataPoint interface, used by the store, parser,
@@ -762,9 +771,7 @@ npm run lint
 npm test
 ```
 
-Runs the automated Vitest suite (70 tests covering CSV/color-file parsing, filters, and truncation logic).
-
-See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
+Runs the automated Vitest suite (70 tests covering CSV/color-file parsing, filters, and truncation logic). See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
 
 ## Test Data
 

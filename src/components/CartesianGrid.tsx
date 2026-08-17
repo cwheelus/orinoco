@@ -5,7 +5,7 @@ import {
   GRID_MAX as MAX,
   TICK_STEP as STEP,
 } from "../lib/gridSpace";
-import { useStore } from "../store/useStore";
+import { useStore, selectIs2D } from "../store/useStore";
 import { useSceneTheme } from "../hooks/useSceneTheme";
 import { config } from "../lib/config";
 
@@ -49,9 +49,11 @@ const BOX_EDGES = [
   [3, 7], // verticals
 ] as const;
 
-// CartesianGrid renders the static 3D reference frame:
+// CartesianGrid renders the static reference frame:
 //   • A horizontal grid plane at data-zero (y=0), clamped inside the volume
-//   • A faint wireframe box showing the [-2, 2]³ bounds
+//   • A faint wireframe box showing the [-2, 2]³ bounds, in 3D mode only —
+//     hidden when the active column mapping is 2D (see is2D below), since
+//     it would otherwise imply Z-depth that isn't there
 // Coordinate axes, tick marks, and labels live in Axes.tsx — this
 // component is only the backdrop. Colors are theme-aware so the grid
 // remains visible against both light and dark backgrounds.
@@ -60,6 +62,14 @@ export function CartesianGrid() {
 
   const zeroY = useStore((state) => state.gridSpace.ZERO_RENDER.y);
   const planeY = Math.min(MAX, Math.max(MIN, zeroY));
+
+  // The bounding box implies real depth on all three axes, which is
+  // misleading once the analyst has flattened the view to 2D — see
+  // Axes.tsx's is2D, which drives this from the same source (the
+  // active column mapping, not the original dataset's shape). Only
+  // the box is skipped; the horizontal plane grid still applies to a
+  // 2D dataset the same way it does to a 3D one.
+  const is2D = useStore(selectIs2D);
 
   const planeLines = useMemo(() => {
     const lines: [number, number, number][][] = [];
@@ -90,16 +100,17 @@ export function CartesianGrid() {
           opacity={PLANE_OPACITY}
         />
       ))}
-      {BOX_EDGES.map(([a, b], i) => (
-        <Line
-          key={`box-${i}`}
-          points={[CORNERS[a], CORNERS[b]]}
-          color={scene.outline}
-          lineWidth={1}
-          transparent
-          opacity={BOX_OPACITY}
-        />
-      ))}
+      {!is2D &&
+        BOX_EDGES.map(([a, b], i) => (
+          <Line
+            key={`box-${i}`}
+            points={[CORNERS[a], CORNERS[b]]}
+            color={scene.outline}
+            lineWidth={1}
+            transparent
+            opacity={BOX_OPACITY}
+          />
+        ))}
     </group>
   );
 }

@@ -14,6 +14,7 @@ import {
 import { config } from "../lib/config";
 import { CODES, type ErrorCode, type Severity } from "../lib/errorCodes";
 import { distinctReasons, type SkippedRow } from "../lib/parseCSV";
+
 export type { ScalingMode, OctantSign };
 
 // One diagnostic shown in the Console page (and, for errors/warnings,
@@ -359,6 +360,13 @@ interface VisualizerState {
   // Empties the console. Called from the Console page's Clear button.
   clearLog: () => void;
 }
+
+// Single source of truth for 2D mode.
+// A dataset is 2D only after a mapping exists and no Z column is mapped.
+// columnMapping === null means no dataset has loaded yet, not 2D.
+// See #62/#63.
+export const selectIs2D = (state: VisualizerState): boolean =>
+  state.columnMapping != null && state.columnMapping.z == null;
 
 export const useStore = create<VisualizerState>((set) => ({
   // The app starts with NO data — App.tsx loads the bundled sample CSV

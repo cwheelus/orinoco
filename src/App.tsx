@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
-import { useStore, formatSkippedRows } from "./store/useStore";
+import { useStore, formatSkippedRows, selectIs2D } from "./store/useStore";
 import { PointCloud } from "./components/PointCloud";
 import {
   CameraRig,
@@ -118,6 +118,10 @@ function App() {
   // contrast, does not read this value directly — see pivotMarkerRef
   // just below for why.
   const pivot = useStore((state) => state.pivot);
+  // 2D mode is active when a dataset is loaded and no Z column is mapped.
+  // In 2D, the camera is locked to a flat X/Y view (looking down Z)
+  // and mouse orbit is disabled (#62).
+  const is2D = useStore(selectIs2D);
   // Which mouse-drag mode is active: "orbit" (default, rotates around the
   // pivot) or "pan" (translates the camera/pivot instead — handled by
   // CameraRig's drag listener, not OrbitControls). Also used below to
@@ -890,7 +894,7 @@ function App() {
         <OrbitControls
           target={pivot}
           makeDefault
-          enableRotate={activeTool === "orbit"}
+          enableRotate={activeTool === "orbit" && !is2D}
           enablePan={false}
           // Zoom guard rails (scroll dolly): can't fly infinitely far out,
           // and can't dolly through the point being looked at. The W/S
