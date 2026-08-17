@@ -438,6 +438,11 @@ export const useStore = create<VisualizerState>((set) => ({
       isolatedOctant: null,
       pivot: [0, 0, 0],
       hoveredPoint: null,
+      // Prevents a stuck axis-label tooltip if a dataset loads while the
+      // mouse still happens to be over a (now-replaced) axis label — see
+      // Axes.tsx's hover handlers and App.tsx's tooltip render (Copilot
+      // review, PR #65).
+      hoveredAxis: null,
       availableClasses: uniqueClasses(dataPoints),
       hiddenClasses: [],
       numericFilters: NO_NUMERIC_FILTERS,

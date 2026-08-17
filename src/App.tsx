@@ -264,42 +264,58 @@ function App() {
         }
       }
 
-      if (skippedRows.length > 0) {
-        // Not a hard failure — the file loaded, just with some rows
-        // excluded. Logged as a WARNING so the banner shows it without
-        // implying the load failed. The per-row reasons go to the
-        // Console; the banner keeps the one-line count.
-        pushLog(
-          CODES.CSV_ROWS_SKIPPED,
-          `${file.name}: loaded ${points.length} point(s), excluded ${skippedRows.length} row(s).`,
-          formatSkippedRows(skippedRows),
-        );
-      } else {
-        // Product decision (updated): every text column beyond uid/class
-        // is reported, including columns at numericCount === 0 — a
-        // successful load should never silently drop a column with zero
-        // indication, regardless of severity. This deliberately includes
-        // ordinary text metadata (department, description, etc.) alongside
-        // genuine near-miss/garbled-axis columns, since the parser has no
-        // way to distinguish the two — matching how established tools
-        // (pandas' DtypeWarning, Tableau's Data Interpreter) prefer
-        // over-informing to silent gaps. See parseCSV.ts's
-        // ParseInterpretation for what the parser actually knows.
-        const interpretationDetails = interpretation.columns
-          .filter(
-            ({ column }) =>
-              column !== mapping.uid && column !== mapping.className,
-          )
-          .map(({ column, numericCount, sampledCount, sampleBadValues }) =>
-            numericCount === 0
+      // Product decision (updated): every text column beyond uid/class
+      // is reported, including columns at numericCount === 0 — a
+      // successful load should never silently drop a column with zero
+      // indication, regardless of severity. This deliberately includes
+      // ordinary text metadata (department, description, etc.) alongside
+      // genuine near-miss/garbled-axis columns, since the parser has no
+      // way to distinguish the two — matching how established tools
+      // (pandas' DtypeWarning, Tableau's Data Interpreter) prefer
+      // over-informing to silent gaps. See parseCSV.ts's
+      // ParseInterpretation for what the parser actually knows.
+      //
+      // Hoisted out of the skippedRows if/else (Copilot review, PR #65):
+      // this must run on EVERY successful load, not just the fully-clean
+      // path — a partial-success load (some rows skipped) is still a
+      // successful load, and previously received no classification
+      // evidence at all, contradicting TESTING_GUIDE.md's documented
+      // "on every successful load" contract.
+      const interpretationDetails = interpretation.columns
+        .filter(
+          ({ column }) =>
+            column !== mapping.uid && column !== mapping.className,
+        )
+        .map(({ column, numericCount, sampledCount, sampleBadValues }) =>
+          // sampledCount === 0 means every value in the sample was empty —
+          // "0/0 sampled values numeric" reads like a math error, not a
+          // diagnostic. Special-cased separately from the genuine
+          // numericCount === 0 case (which DOES have samples, they're
+          // just all non-numeric).
+          sampledCount === 0
+            ? `Column "${column}": no sampled values`
+            : numericCount === 0
               ? `Column "${column}": text (0/${sampledCount} sampled values numeric)`
               : `Column "${column}" excluded from numeric classification: ` +
                 `${numericCount}/${sampledCount} sampled values numeric` +
                 (sampleBadValues.length
                   ? ` — examples: ${sampleBadValues.map((v) => `"${v}"`).join(", ")}`
                   : ""),
-          );
+        );
 
+      if (skippedRows.length > 0) {
+        // Not a hard failure — the file loaded, just with some rows
+        // excluded. Logged as a WARNING so the banner shows it without
+        // implying the load failed. The per-row reasons AND the
+        // classification evidence both go into this single warning's
+        // detail, rather than splitting one load across two Console
+        // entries (Copilot review, PR #65).
+        pushLog(
+          CODES.CSV_ROWS_SKIPPED,
+          `${file.name}: loaded ${points.length} point(s), excluded ${skippedRows.length} row(s).`,
+          [...formatSkippedRows(skippedRows), ...interpretationDetails],
+        );
+      } else {
         pushLog(
           CODES.CSV_LOADED,
           `${file.name}: loaded ${points.length} point(s) from ${rows.length} row(s).`,
