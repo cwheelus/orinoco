@@ -16,6 +16,8 @@ import { Toolbar } from "./components/Toolbar";
 import { parseCSV } from "./lib/parseCSV";
 import { parseColorsCSV } from "./lib/parseColorsCSV";
 import { getClassColor } from "./lib/classColors";
+import { getUnmatchedColorOverrides } from "./lib/colorValidation";
+import { truncateLabel } from "./lib/truncateLabel";
 import { SURFACE, PANEL_APP, TEXT, ERROR, WARNING, KBD } from "./lib/theme";
 import { config } from "./lib/config";
 import { appError, describeError, CODES } from "./lib/errorCodes";
@@ -128,6 +130,9 @@ function App() {
   // The data point object currently under the cursor, or null if
   // nothing is being hovered. Drives the conditional HUD panel below.
   const hoveredPoint = useStore((state) => state.hoveredPoint);
+  // Which axis label is hovered, if any — drives the full-name
+  // tooltip below, since Axes.tsx's WebGL Text has no native title.
+  const hoveredAxis = useStore((state) => state.hoveredAxis);
   // Which real column is plotted on each axis (e.g. "orig_bytes"),
   // used below so the Point Analysis panel's metric labels always
   // match whatever's actually loaded, instead of hardcoded letters.
@@ -141,8 +146,12 @@ function App() {
   // Analyst's manual color picks for classes — passed to getClassColor()
   // as the highest-precedence source. Populated by the colors.csv
   // loader (see lib/parseColorsCSV.ts), not an in-app picker — see
-  // Charles's original spec and the #43 discussion for why.
+  // original spec and the #43 discussion.
   const classColorOverrides = useStore((state) => state.classColorOverrides);
+  // Class names actually present in the loaded dataset — used to
+  // cross-check colors.csv overrides against real classes when
+  // colors load AFTER a dataset already exists. See #59.
+  const availableClasses = useStore((state) => state.availableClasses);
   // Non-numeric field values for the currently-hovered point, keyed
   // by uid — see lib/parseCSV.ts's ParseResult.metadata for the
   // shape. null until the first dataset loads.
@@ -208,8 +217,15 @@ function App() {
   //     generic "something went wrong."
   const handleFileSelected = async (file: File) => {
     try {
-      const { rows, points, mapping, schema, metadata, skippedRows } =
-        await parseCSV(file);
+      const {
+        rows,
+        points,
+        mapping,
+        schema,
+        metadata,
+        skippedRows,
+        interpretation,
+      } = await parseCSV(file);
       setDataPoints(
         points,
         {
@@ -222,15 +238,86 @@ function App() {
         rows,
         mapping,
       );
+
+      // #59: re-validate any ALREADY-LOADED colors.csv overrides
+      // against THIS newly parsed dataset — never against the
+      // previous one (points, not dataPoints/availableClasses, which
+      // haven't recomputed in this synchronous handler yet). Silent
+      // on a match: CLR-100 means "colors.csv loaded successfully,"
+      // not "an existing override set was re-checked" — those are
+      // different events. Diagnostics are historical, so an earlier
+      // CLR-051 from a prior dataset is never retroactively cleared;
+      // this only ever adds a NEW entry if THIS dataset has a mismatch.
+      if (Object.keys(classColorOverrides).length > 0) {
+        const newAvailableClasses = [
+          ...new Set(points.map((p) => p.className)),
+        ];
+        const unmatched = getUnmatchedColorOverrides(
+          classColorOverrides,
+          newAvailableClasses,
+        );
+        if (unmatched.length > 0) {
+          pushLog(
+            CODES.CLR_UNMATCHED_CLASS,
+            `${unmatched.length} color override(s) don't match any class in ${file.name}.`,
+            [
+              `Unmatched (check for typos): ${unmatched.join(", ")}`,
+              `Loaded dataset classes: ${newAvailableClasses.join(", ")}`,
+            ],
+          );
+        }
+      }
+
+      // Product decision (updated): every text column beyond uid/class
+      // is reported, including columns at numericCount === 0 — a
+      // successful load should never silently drop a column with zero
+      // indication, regardless of severity. This deliberately includes
+      // ordinary text metadata (department, description, etc.) alongside
+      // genuine near-miss/garbled-axis columns, since the parser has no
+      // way to distinguish the two — matching how established tools
+      // (pandas' DtypeWarning, Tableau's Data Interpreter) prefer
+      // over-informing to silent gaps. See parseCSV.ts's
+      // ParseInterpretation for what the parser actually knows.
+      //
+      // Hoisted out of the skippedRows if/else (Copilot review, PR #65):
+      // this must run on EVERY successful load, not just the fully-clean
+      // path — a partial-success load (some rows skipped) is still a
+      // successful load, and previously received no classification
+      // evidence at all, contradicting TESTING_GUIDE.md's documented
+      // "on every successful load" contract.
+      const interpretationDetails = interpretation.columns
+        .filter(
+          ({ column }) =>
+            column !== mapping.uid && column !== mapping.className,
+        )
+        .map(({ column, numericCount, sampledCount, sampleBadValues }) =>
+          // sampledCount === 0 means every value in the sample was empty —
+          // "0/0 sampled values numeric" reads like a math error, not a
+          // diagnostic. Special-cased separately from the genuine
+          // numericCount === 0 case (which DOES have samples, they're
+          // just all non-numeric).
+          sampledCount === 0
+            ? `Column "${column}": no sampled values`
+            : numericCount === 0
+              ? `Column "${column}": text (0/${sampledCount} sampled values numeric)`
+              : `Column "${column}" excluded from numeric classification: ` +
+                `${numericCount}/${sampledCount} sampled values numeric` +
+                (sampleBadValues.length
+                  ? ` — examples: ${sampleBadValues.map((v) => `"${v}"`).join(", ")}`
+                  : ""),
+        );
+
       if (skippedRows.length > 0) {
         // Not a hard failure — the file loaded, just with some rows
         // excluded. Logged as a WARNING so the banner shows it without
-        // implying the load failed. The per-row reasons go to the
-        // Console; the banner keeps the one-line count.
+        // implying the load failed. The per-row reasons AND the
+        // classification evidence both go into this single warning's
+        // detail, rather than splitting one load across two Console
+        // entries (Copilot review, PR #65).
         pushLog(
           CODES.CSV_ROWS_SKIPPED,
           `${file.name}: loaded ${points.length} point(s), excluded ${skippedRows.length} row(s).`,
-          formatSkippedRows(skippedRows),
+          [...formatSkippedRows(skippedRows), ...interpretationDetails],
         );
       } else {
         pushLog(
@@ -239,6 +326,7 @@ function App() {
           [
             `Axes: ${mapping.x} / ${mapping.y} / ${mapping.z ?? "none (2D)"}`,
             `Identity: ${mapping.uid} · Class: ${mapping.className}`,
+            ...interpretationDetails,
           ],
         );
       }
@@ -264,18 +352,48 @@ function App() {
       const { overrides, skippedRows } = await parseColorsCSV(file);
       setClassColorOverrides(overrides);
       const applied = Object.keys(overrides).length;
+      // Single source of truth for "is a dataset currently loaded" —
+      // dataPoints, not availableClasses (which is derived FROM
+      // dataPoints and shouldn't also be relied on as the load
+      // signal — see #59 discussion). Any successfully loaded
+      // dataset is structurally guaranteed at least one point.
+      const datasetLoaded = dataPoints.length > 0;
+
       if (skippedRows.length > 0) {
         pushLog(
           CODES.CLR_ROWS_SKIPPED,
           `${file.name}: applied ${applied} color override(s), excluded ${skippedRows.length} row(s).`,
           formatSkippedRows(skippedRows),
         );
-      } else {
+      }
+
+      if (!datasetLoaded) {
         pushLog(
-          CODES.CLR_LOADED,
-          `${file.name}: applied ${applied} color override(s).`,
+          CODES.CLR_VALIDATION_DEFERRED,
+          `${file.name}: applied ${applied} color override(s). Load a dataset before validating color overrides.`,
           Object.entries(overrides).map(([cls, hex]) => `${cls} → ${hex}`),
         );
+      } else {
+        const unmatched = getUnmatchedColorOverrides(
+          overrides,
+          availableClasses,
+        );
+        if (unmatched.length > 0) {
+          pushLog(
+            CODES.CLR_UNMATCHED_CLASS,
+            `${unmatched.length} of ${applied} color override(s) don't match any loaded class.`,
+            [
+              `Unmatched (check for typos): ${unmatched.join(", ")}`,
+              `Loaded dataset classes: ${availableClasses.join(", ")}`,
+            ],
+          );
+        } else if (skippedRows.length === 0) {
+          pushLog(
+            CODES.CLR_LOADED,
+            `${file.name}: applied ${applied} color override(s).`,
+            Object.entries(overrides).map(([cls, hex]) => `${cls} → ${hex}`),
+          );
+        }
       }
     } catch (err) {
       const { appCode, message, detail } = describeError(
@@ -482,6 +600,22 @@ function App() {
           </div>
         )}
 
+        {/* Axis label tooltip: shows the full, untruncated axis name
+            on hover, since Axes.tsx truncates long names for display
+            (#59) and its WebGL <Text> has no native DOM title. Fixed
+            position near the top rather than tracking cursor/3D screen
+            coordinates — simpler, and axis labels don't move around
+            the viewport the way individual data points do. */}
+        {hoveredAxis && (
+          <div
+            className={`pointer-events-none fixed top-20 left-1/2 -translate-x-1/2 px-3 py-1.5 ${SURFACE.card} border-l-2 border-blue-500 ring-1 ring-white/10 shadow-2xl z-20`}
+          >
+            <span className={`text-[11px] font-mono ${TEXT.onFilled}`}>
+              {axisLabels[hoveredAxis]}
+            </span>
+          </div>
+        )}
+
         {/* Dynamic Point Inspector: only renders when hoveredPoint is
             truthy (i.e. a point is currently being hovered). Uses `&&`
             rather than a ternary since there's no fallback content to
@@ -509,13 +643,13 @@ function App() {
                   </span>
                 </div>
                 <div
-                  className={`flex justify-between border-b ${PANEL_APP.hairline} pb-1`}
+                  className={`flex justify-between items-start gap-2 border-b ${PANEL_APP.hairline} pb-1 min-w-0`}
                 >
-                  <span className={`${TEXT.faint} text-[10px]`}>
+                  <span className={`${TEXT.faint} text-[10px] shrink-0`}>
                     Classification
                   </span>
                   <span
-                    className="text-[10px] font-bold uppercase"
+                    className="text-[10px] font-bold uppercase break-words min-w-0 text-left"
                     style={{
                       color: getClassColor(
                         hoveredPoint.className,
@@ -563,12 +697,13 @@ function App() {
                       }`}
                     >
                       <span
-                        className={`${TEXT.faint} text-[10px] truncate max-w-[60%]`}
-                        title={axisLabels[axis]}
+                        className={`${TEXT.faint} text-[10px] break-words max-w-[60%] min-w-0`}
                       >
                         {axisLabels[axis]}
                       </span>
-                      <span className={`${TEXT.onFilled} font-mono text-xs`}>
+                      <span
+                        className={`${TEXT.onFilled} font-mono text-xs shrink-0`}
+                      >
                         {hoveredPoint[axis].toFixed(3)}
                       </span>
                     </div>
@@ -679,8 +814,9 @@ function App() {
                     />
                     <span
                       className={`text-[10px] uppercase font-bold ${TEXT.emphasis} tracking-widest`}
+                      title={className}
                     >
-                      {className}
+                      {truncateLabel(className)}
                     </span>
                   </div>
                 );

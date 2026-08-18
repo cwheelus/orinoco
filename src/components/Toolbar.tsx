@@ -31,6 +31,7 @@ import {
   SEVERITY_TEXT,
 } from "../lib/theme";
 import { config } from "../lib/config";
+import { truncateLabel } from "../lib/truncateLabel";
 
 // Range and granularity of the two Data/Grid page sliders — the bounds
 // a deployer sets on what the analyst may dial in. See config.json's
@@ -814,10 +815,10 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                       return (
                         <div key={axis} className="flex items-center gap-1">
                           <span
-                            className={`text-[9px] font-mono ${TEXT.muted} w-14 truncate shrink-0`}
+                            className={`text-[9px] font-mono ${TEXT.muted} w-14 shrink-0`}
                             title={axisLabels[axis]}
                           >
-                            {axisLabels[axis]}
+                            {truncateLabel(axisLabels[axis])}
                           </span>
                           <select
                             value={f.op}

@@ -10,6 +10,7 @@ import {
 import { useStore } from "../store/useStore";
 import { useSceneTheme } from "../hooks/useSceneTheme";
 import { config } from "../lib/config";
+import { truncateLabel } from "../lib/truncateLabel";
 
 // Axis line + arrowhead styling, and the tick model below — all tunable
 // via config.json's `axes` section.
@@ -183,6 +184,7 @@ export function Axes() {
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const tickDensity = useStore((state) => state.tickDensity);
   const columnMapping = useStore((state) => state.columnMapping);
+  const setHoveredAxis = useStore((state) => state.setHoveredAxis);
 
   const ticks = useMemo(
     () => ({
@@ -228,8 +230,19 @@ export function Axes() {
             <meshBasicMaterial color={scene.axis} />
           </mesh>
           <Billboard position={ax.titlePos}>
-            <Text fontSize={AXIS_TITLE_FONT} color={text.title}>
-              {axisLabels[ax.key]}
+            {/* Truncated per Charles/Eric's #59 spec — full name shown
+                via App.tsx's HTML tooltip on hover (hoveredAxis in the
+                store), since drei's Text has no native DOM title. */}
+            <Text
+              fontSize={AXIS_TITLE_FONT}
+              color={text.title}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setHoveredAxis(ax.key);
+              }}
+              onPointerOut={() => setHoveredAxis(null)}
+            >
+              {truncateLabel(axisLabels[ax.key])}
             </Text>
           </Billboard>
           {!hiddenTickAxes.includes(ax.key) &&
