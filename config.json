@@ -77,9 +77,9 @@
     "pointSizeScale": 1,
     "tickDensity": 10,
     "axisLabels": {
-      "x": "orig_bytes",
-      "y": "invel_pps",
-      "z": "invel_bpp"
+      "x": "X",
+      "y": "Y",
+      "z": "Z"
     },
     "unmappedAxisLabel": "Z"
   },

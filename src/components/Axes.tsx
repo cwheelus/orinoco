@@ -7,7 +7,7 @@ import {
   GRID_MAX as MAX,
   type AxisRange,
 } from "../lib/gridSpace";
-import { useStore } from "../store/useStore";
+import { useStore, selectIs2D } from "../store/useStore";
 import { useSceneTheme } from "../hooks/useSceneTheme";
 import { config } from "../lib/config";
 import { truncateLabel } from "../lib/truncateLabel";
@@ -183,7 +183,6 @@ export function Axes() {
   const axisLabels = useStore((state) => state.axisLabels);
   const hiddenTickAxes = useStore((state) => state.hiddenTickAxes);
   const tickDensity = useStore((state) => state.tickDensity);
-  const columnMapping = useStore((state) => state.columnMapping);
   const setHoveredAxis = useStore((state) => state.setHoveredAxis);
 
   const ticks = useMemo(
@@ -201,7 +200,15 @@ export function Axes() {
   // Filtering it out of `axes` here means the line, arrow, title, and
   // ticks below all skip Z automatically — nothing else in this file
   // needs its own dimension check.
-  const is2D = columnMapping?.z == null;
+  //
+  // Read through selectIs2D rather than testing `columnMapping?.z`
+  // directly: an ABSENT mapping means no dataset has loaded yet, which
+  // is not the same as a 2D one (#62/#63). The two used to agree in
+  // practice because a dataset was auto-loaded on mount, so the null
+  // window lasted a single tick; with the app now opening empty (#57)
+  // that window is however long the analyst takes to pick a file, and
+  // the local test would render the empty grid as a flat 2D plane.
+  const is2D = useStore(selectIs2D);
   const axes = useMemo(() => {
     const all = axisDefs(ZERO_RENDER.x, ZERO_RENDER.y, ZERO_RENDER.z);
     return is2D ? all.filter((ax) => ax.key !== "z") : all;

@@ -96,7 +96,7 @@ Analysts can load any CSV dataset directly in-browser via the toolbar's file pic
 
 Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to any one dataset.
 
-**No separate default-data code path:** the bundled sample (`sample-data/mixed-sign-sample.csv`, 500 rows straddling zero on all three axes) is imported as raw CSV text via Vite's `?raw` loader, wrapped in a `File`, and run through the exact same `parseCSV → setDataPoints` pipeline a user upload takes. The store starts with an empty dataset; `App.tsx` loads the sample on mount.
+**The app starts blank (#57):** no dataset is bundled and none is auto-loaded. The store starts empty, the scene shows a neutral X/Y/Z grid, and a centered prompt points at the toolbar's paperclip until the analyst loads a CSV. A deployment that *does* want a dataset on open sets `data.sampleDataset` in `config.json` to a path or URL the browser can fetch; it is fetched at startup and run through the exact same `parseCSV → setDataPoints` pipeline a user upload takes, so there is still no separate default-data code path.
 
 ```mermaid
 flowchart LR
@@ -397,19 +397,12 @@ orinoco/
 │   └── video/
 │       └── orinoco-demo.mp4
 │
-├── test-data/
-│   ├── test-1k.csv
-│   │   └── Synthetic 1,000-row dataset for load/render testing
-│   ├── test-10k.csv
-│   │   └── Synthetic 10,000-row dataset for performance testing
-│   └── test-malformed.csv
-│       └── Deliberately invalid CSV (wrong column count) for
-│           exercising parseCSV.ts's error handling
-│
 ├── sample-data/
-│   └── mixed-sign-sample.csv
-│       └── 500-row mixed positive/negative sample — now the
-│           bundled default dataset, loaded via the CSV pipeline
+│   ├── error-showcase.csv
+│   │   └── One file exercising several row-level exclusions at once
+│   └── error-cases/
+│       └── One CSV per error code (csv-001…csv-004, clr-001…clr-050),
+│           for manually confirming each rejection surfaces correctly
 │
 ├── src/
 │   ├── components/
@@ -666,9 +659,9 @@ Icon library used for interface elements, including the toolbar's icon strip (pa
 
 # Data Configuration
 
-The application no longer bundles a static `data.json`. The default dataset (`sample-data/mixed-sign-sample.csv`, 500 rows with values straddling zero on all three axes) loads on mount through the same `parseCSV → setDataPoints` pipeline a user's own CSV upload takes — there is no separate hardcoded-data code path.
+The application bundles no dataset at all — not a static `data.json`, and not a sample CSV. It opens on an empty grid and waits for the analyst to load a file (#57). A deployer who wants a dataset loaded on open points `data.sampleDataset` (in `config.json`) at a path or URL the browser can fetch; that file goes through the same `parseCSV → setDataPoints` pipeline a manual upload does, so there is no separate hardcoded-data code path either way.
 
-Loaded datasets, whether the bundled sample or a user CSV, share the same internal shape:
+Every loaded dataset, whether fetched at startup or picked from the toolbar, shares the same internal shape:
 
 ```json
 {
@@ -771,25 +764,20 @@ npm run lint
 npm test
 ```
 
-Runs the automated Vitest suite (70 tests covering CSV/color-file parsing, filters, and truncation logic). See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
+Runs the automated Vitest suite (80 tests covering CSV/color-file parsing, filters, truncation, the error-code guard, and Console log-id behavior). See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
 
 ## Test Data
 
-Sample CSV files for manually exercising the loader live in `test-data/`:
+The app ships with no dataset (#57) — supply your own CSV through the toolbar's paperclip icon.
 
-| File                 | Purpose                                                                                                                                 |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `test-1k.csv`        | 1,000-row synthetic dataset, for confirming normal load/render behavior at moderate scale                                               |
-| `test-10k.csv`       | 10,000-row synthetic dataset, for performance testing                                                                                   |
-| `test-malformed.csv` | Deliberately invalid (wrong column count), for confirming `parseCSV.ts`'s error handling surfaces correctly instead of failing silently |
+Fixtures for manually exercising the loader's REJECTION paths live in `sample-data/`:
 
-The bundled default dataset lives in `sample-data/`:
+| File                   | Purpose                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| `error-showcase.csv`   | Several row-level exclusion causes in one file, for checking the Console's per-cause summary          |
+| `error-cases/*.csv`    | One file per error code (`csv-001`…`csv-004`, `clr-001`…`clr-050`), for confirming each rejection surfaces with the right code |
 
-| File                    | Purpose                                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `mixed-sign-sample.csv` | 500-row sample with both positive and negative values on all three axes — loaded automatically on app start |
-
-Load any of the `test-data/` files through the toolbar's paperclip icon to try a different dataset.
+Any CSV with at least two numeric columns and one text column will load; see [TESTING_GUIDE.md](TESTING_GUIDE.md) for the manual QA procedure these fixtures support.
 
 ## Key Dependency Versions
 
@@ -831,7 +819,7 @@ Project Orinoco is a functional MVP demonstrating:
 - WASD camera navigation with dedicated arrow/space/shift pivot traversal, plus orbit and pan drag modes
 - Navigation guardrails: zoom limits, pivot bounds, and stuck-key protection
 - Dynamic pivot exploration with origin reset and lockstep marker tracking
-- CSV-only dataset loading (no separate hardcoded default), with an auto-detecting parser and clear error handling for malformed or partially invalid files, plus an optional colors.csv override for classification colors
+- CSV-only dataset loading — nothing is bundled and the app opens blank, prompting for a file — with an auto-detecting parser and clear error handling for malformed or partially invalid files, plus an optional colors.csv override for classification colors
 - A locked, flat top-down camera mode for 2D (Z-less) datasets, with orbit/tilt disabled and full arrow-key panning preserved
 - A session diagnostics Console with stable, coded error/warning/info entries and per-row detail
 - Deployment-level tuning via a validated `config.json` (grid, points, camera, defaults, sliders)
@@ -839,7 +827,7 @@ Project Orinoco is a functional MVP demonstrating:
 - Instanced point rendering with count-adaptive sizing for large datasets
 - Real-time metadata inspection, labeled with the active dataset's real column names
 - SOC-style analyst interface
-- An automated Vitest regression suite (70 tests) covering CSV/color-file parsing, numeric filters, and display truncation — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- An automated Vitest regression suite (80 tests) covering CSV/color-file parsing, numeric filters, display truncation, the error-code type guard, and Console log-id behavior — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ---
 

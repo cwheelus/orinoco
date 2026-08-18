@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import type { Group } from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Line } from "@react-three/drei";
+import { Paperclip } from "lucide-react";
 import { useStore, formatSkippedRows, selectIs2D } from "./store/useStore";
 import { PointCloud } from "./components/PointCloud";
 import {
@@ -22,16 +23,12 @@ import { SURFACE, PANEL_APP, TEXT, ERROR, WARNING, KBD } from "./lib/theme";
 import { config } from "./lib/config";
 import { appError, describeError, CODES } from "./lib/errorCodes";
 
-// The bundled fallback dataset, imported as raw CSV text (Vite `?raw`)
-// so it ships inside the build with no network round-trip. Used only
-// when config.json's data.sampleDataset is blank — see the startup
-// effect below. Either way it takes the exact same parseCSV →
-// setDataPoints path a user's uploaded CSV does.
-import bundledSampleCsv from "../sample-data/mixed-sign-sample.csv?raw";
-const BUNDLED_SAMPLE_NAME = "mixed-sign-sample.csv";
-
-// Path or URL of the dataset to load on startup. Blank = use the
-// bundled file above.
+// Path or URL of a dataset to load on startup, or blank. Blank is the
+// SHIPPED DEFAULT and means the app starts with no data at all — see
+// #57. There is deliberately no bundled fallback: the product opens
+// empty and prompts for a CSV, rather than showing a demo dataset an
+// analyst has to notice isn't theirs. A deployer who does want a
+// dataset on open sets this to something the browser can fetch.
 const STARTUP_DATASET = config.data.sampleDataset.trim();
 
 // Where the camera sits before any user input.
@@ -143,6 +140,12 @@ function App() {
   // Full dataset — needed for the color legend so unknown classes get
   // their deterministic generated color instead of being silently omitted.
   const dataPoints = useStore((state) => state.dataPoints);
+  // null until a dataset has been loaded — the store's own "nothing
+  // loaded yet" signal (see selectIs2D's comment in useStore.ts), and
+  // what drives the empty-state prompt below. Preferred over
+  // `dataPoints.length === 0` because it distinguishes "no file yet"
+  // from "a file that legitimately produced no points".
+  const columnMapping = useStore((state) => state.columnMapping);
   // Analyst's manual color picks for classes — passed to getClassColor()
   // as the highest-precedence source. Populated by the colors.csv
   // loader (see lib/parseColorsCSV.ts), not an in-app picker — see
@@ -192,6 +195,15 @@ function App() {
   // the Console's record; a newer diagnostic has a higher id, so it
   // reappears on the next problem rather than staying suppressed.
   const [dismissedLogId, setDismissedLogId] = useState(0);
+
+  // True only while a CONFIGURED startup dataset is in flight. Without
+  // it the empty-state prompt below would flash on first paint of a
+  // deployment that does auto-load, telling the analyst to pick a file
+  // a moment before one appears on its own. Starts false in the shipped
+  // configuration, where there is nothing to wait for.
+  const [startupPending, setStartupPending] = useState(
+    () => STARTUP_DATASET !== "",
+  );
   const activeAlert = useMemo(() => {
     for (let i = logEntries.length - 1; i >= 0; i--) {
       const entry = logEntries[i];
@@ -404,28 +416,29 @@ function App() {
     }
   };
 
-  // Load the startup dataset once on mount, through the same parseCSV →
-  // setDataPoints pipeline as a user upload — so it's the initial
-  // dataset without any separate hardcoded-data code path. Either
-  // source is wrapped in a File so parseCSV (which takes a File) is
-  // reused verbatim. Skipped-row banners are intentionally not surfaced
-  // here, since this isn't a user-initiated load; hard failures still
-  // are, via the same banner a manual upload would use.
+  // Load a CONFIGURED startup dataset once on mount, through the same
+  // parseCSV → setDataPoints pipeline as a user upload — so it's the
+  // initial dataset without any separate hardcoded-data code path. The
+  // fetched text is wrapped in a File so parseCSV (which takes a File)
+  // is reused verbatim. Skipped-row banners are intentionally not
+  // surfaced here, since this isn't a user-initiated load; hard
+  // failures still are, via the same banner a manual upload would use.
   useEffect(() => {
+    // The shipped default. No configured dataset means the app opens
+    // empty and waits for the analyst's own CSV (#57) — the empty-state
+    // prompt in the HUD below covers this case.
+    if (!STARTUP_DATASET) {
+      setStartupPending(false);
+      return;
+    }
+
     // Guards against a late resolve landing after unmount (or after a
     // fast-refresh remount) and writing to a stale store subscription.
     let cancelled = false;
 
-    // config.json's data.sampleDataset decides where the first dataset
-    // comes from. Blank (the shipped default) uses the CSV bundled at
-    // build time; any other value is fetched at runtime, so a deployer
-    // can point the app at their own file without a rebuild.
+    // Fetched at runtime rather than bundled at build time, so a
+    // deployer can point the app at their own file without a rebuild.
     const fetchStartupDataset = async (): Promise<File> => {
-      if (!STARTUP_DATASET) {
-        return new File([bundledSampleCsv], BUNDLED_SAMPLE_NAME, {
-          type: "text/csv",
-        });
-      }
       const response = await fetch(STARTUP_DATASET);
       if (!response.ok) {
         throw appError(
@@ -433,7 +446,7 @@ function App() {
           `Could not load the configured startup dataset "${STARTUP_DATASET}" (HTTP ${response.status}).`,
           [
             "Set data.sampleDataset in config.json to a path the browser can fetch,",
-            "or leave it blank to use the bundled sample dataset.",
+            "or leave it blank to start with no dataset and load one from the toolbar.",
           ],
         );
       }
@@ -480,9 +493,9 @@ function App() {
         // a red banner over a load the analyst never initiated.
         pushLog(
           CODES.CSV_LOADED,
-          `${STARTUP_DATASET || BUNDLED_SAMPLE_NAME}: loaded ${points.length} point(s) from ${rows.length} row(s).`,
+          `${STARTUP_DATASET}: loaded ${points.length} point(s) from ${rows.length} row(s).`,
           [
-            `Source: ${STARTUP_DATASET ? "config.json data.sampleDataset" : "bundled sample"}`,
+            "Source: config.json data.sampleDataset",
             `Axes: ${mapping.x} / ${mapping.y} / ${mapping.z ?? "none (2D)"}`,
             ...(skippedRows.length > 0
               ? [
@@ -497,9 +510,14 @@ function App() {
         if (cancelled) return;
         const { appCode, message, detail } = describeError(
           err,
-          "Failed to load sample data.",
+          "Failed to load the configured startup dataset.",
         );
         pushLog(appCode, message, detail);
+      })
+      // Whether it loaded or failed, the startup attempt is over — the
+      // empty-state prompt is free to appear if nothing landed.
+      .finally(() => {
+        if (!cancelled) setStartupPending(false);
       });
 
     return () => {
@@ -532,6 +550,40 @@ function App() {
         onFileSelected={handleFileSelected}
         onColorFileSelected={handleColorFileSelected}
       />
+
+      {/* EMPTY STATE (#57). The app ships with no bundled dataset, so
+          the first thing an analyst sees is an empty grid — which on
+          its own reads as "broken" rather than "waiting for you". This
+          says what to do and points at the control that does it.
+          Sits outside the HUD's flex column below and is centered on
+          the viewport instead: it's not part of the header/banner/
+          inspector stack, and slotting it into that justify-between
+          layout would push those apart. pointer-events-none so it
+          never intercepts a drag on the scene behind it; the toolbar's
+          own button stays the only click target. */}
+      {columnMapping == null && !startupPending && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+          <div
+            className={`max-w-sm p-5 text-center ${SURFACE.card} ring-1 ring-white/10 shadow-2xl`}
+          >
+            <Paperclip
+              size={20}
+              className={`mx-auto mb-3 ${TEXT.iconDefault}`}
+            />
+            <p className={`text-sm font-bold mb-1.5 ${TEXT.onFilled}`}>
+              No dataset loaded
+            </p>
+            <p className={`text-[11px] leading-relaxed ${TEXT.emphasis}`}>
+              Load a CSV with the paperclip button in the toolbar, top
+              right, to plot it.
+            </p>
+            <p className={`text-[10px] leading-relaxed mt-2 ${TEXT.faint}`}>
+              Two or more numeric columns are mapped to the axes
+              automatically, and one text column labels each point.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 
           1. HUD OVERLAY (2D)

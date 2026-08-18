@@ -296,7 +296,7 @@ Items identified that are not product defects, tracked separately from the fault
 
 | Item                                                                                                              | Note                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| README's "Test Data" section describes `sample-data/mixed-sign-sample.csv` as "loaded automatically on app start" | The startup auto-load is planned for removal in a future issue. This README line will require updating once that change lands; it is tracked separately. |
+| README's "Test Data" section described `sample-data/mixed-sign-sample.csv` as "loaded automatically on app start" | Resolved by #57 — the startup auto-load and the bundled dataset are both gone, and that README section now documents the error-case fixtures instead. Historical note only. |
 | Two `__tests__` folders existed during initial test-suite setup                                                   | Resolved — all tests are consolidated into `src/lib/__tests__/`. Documented here as a historical note only.                                              |
 
 ---
@@ -404,8 +404,10 @@ A passing `npm test` run does not indicate the application is fully verified —
 | `truncateLabel.test.ts`   | 9     | The 8-character display-truncation specification                                                                              |
 | `passesNumeric.test.ts`   | 16    | Numeric filter evaluation, including the inverted-range fix                                                                   |
 | `colorValidation.test.ts` | 8     | Color-override comparison logic, including fresh re-validation across dataset changes                                         |
+| `errorCodes.test.ts`      | 6     | The `isAppError` shape guard and `describeError`'s APP-001 fallback (#58)                                                     |
+| `logIds.test.ts`          | 4     | Console log-id monotonicity across clears and ring-buffer trimming (#58)                                                      |
 
-70 tests total.
+80 tests total.
 
 ---
 

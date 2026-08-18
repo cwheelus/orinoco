@@ -15,10 +15,11 @@ import rawConfig from "../../config.json";
  *
  * HOW IT LOADS: Vite inlines config.json at build time, so edits need
  * a dev-server restart (or a rebuild) to take effect. That's the
- * deliberate trade: in exchange, TypeScript validates the file's shape
- * at compile time, so a typo'd key is a build error rather than an
- * undefined at runtime. `validate()` below covers the cases types
- * can't — values that are well-typed but nonsensical.
+ * deliberate trade: in exchange, TypeScript sees the file's literal
+ * shape, so a MISSPELLED key is a build error rather than an undefined
+ * at runtime (see the assertion below for exactly how far that goes).
+ * `validate()` covers what types can't — values that are well-typed but
+ * nonsensical.
  *
  * Every consumer keeps its own named constants (`const BASE_RADIUS =
  * config.points.baseRadius`) rather than reaching into `config.*`
@@ -34,8 +35,9 @@ export interface AppConfig {
     /**
      * Dataset to load on startup.
      *
-     * BLANK (the default) loads the CSV bundled at
-     * sample-data/mixed-sign-sample.csv — i.e. current behavior.
+     * BLANK (the default) loads nothing: the app opens on an empty
+     * grid and prompts for a CSV. Nothing is bundled — the shipped
+     * product never auto-loads a dataset (#57).
      *
      * Set to a path or URL the browser can fetch (e.g.
      * "/data/flows.csv") to boot from that file instead. It is fetched
@@ -149,7 +151,13 @@ export interface AppConfig {
     scalingMode: ScalingModeName;
     pointSizeScale: number;
     tickDensity: number;
-    /** Axis names shown before the first dataset finishes loading. */
+    /**
+     * Axis names shown when no dataset is loaded. Since the app no
+     * longer auto-loads anything (#57), this is what an analyst sees
+     * until they pick a file — so it should be a neutral placeholder
+     * ("X"/"Y"/"Z"), not a real dataset's column names, which would
+     * read as though something were already plotted.
+     */
     axisLabels: { x: string; y: string; z: string };
     /** Label used for an axis with no column mapped to it (a 2D dataset's Z). */
     unmappedAxisLabel: string;
@@ -186,8 +194,21 @@ export interface SliderLimits {
 
 // JSON modules widen string literals to `string` and tuples to arrays,
 // so the assertion is needed to recover `ActiveToolName` and
-// `[number, number, number]`. It still catches a missing or misspelled
-// key, since neither type is assignable to the other in that case.
+// `[number, number, number]`.
+//
+// WHAT THE ASSERTION DOES AND DOESN'T CATCH. `as` is compile-time only
+// and performs no runtime check, but it is not a blanket silencer
+// either: TypeScript rejects it unless one of the two types is
+// assignable to the other. A MISSPELLED key therefore still fails the
+// build — "numericThreshhold" leaves AppConfig's "numericThreshold"
+// missing on one side and an unknown extra on the other, so neither
+// direction is assignable. A key that is simply ABSENT does NOT fail:
+// AppConfig is assignable to the narrower shape JSON inferred, so the
+// assertion is permitted and the value arrives as undefined at runtime.
+// The `positive`/`ordered` checks in validate() catch most such holes
+// (undefined is neither finite nor ordered), but coverage there is
+// per-field, not exhaustive — a truly airtight guarantee needs a
+// runtime schema validator, which this app doesn't carry.
 const config = rawConfig as AppConfig;
 
 /**
