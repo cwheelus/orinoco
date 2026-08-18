@@ -179,7 +179,13 @@ export function appError(
  * (an iframe, a worker) still narrows correctly if it is shaped right.
  */
 export function isAppError(err: unknown): err is AppError {
-  if (!(err instanceof Error) || err.name !== "AppError") return false;
+  if (
+    typeof err !== "object" ||
+    err === null ||
+    typeof (err as Error).message !== "string" ||
+    (err as Error).name !== "AppError"
+  )
+    return false;
   const { appCode } = err as Partial<AppError>;
   return (
     typeof appCode === "object" &&

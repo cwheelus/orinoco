@@ -37,6 +37,18 @@ describe("isAppError", () => {
     });
     expect(isAppError(foreign)).toBe(false);
   });
+
+  it("accepts a cross-realm-like Error with the correct shape", () => {
+    // Simulates an Error from another realm (iframe/worker) where
+    // `instanceof Error` would be false but the shape is valid.
+    const crossRealm = {
+      name: "AppError",
+      message: "cross-realm",
+      appCode: CODES.CSV_EMPTY,
+    };
+    expect(crossRealm instanceof Error).toBe(false);
+    expect(isAppError(crossRealm)).toBe(true);
+  });
 });
 
 describe("describeError", () => {
