@@ -163,8 +163,39 @@ export function appError(
   return err;
 }
 
+/**
+ * Type guard for a coded error produced by `appError()` above.
+ *
+ * Checks the SHAPE, not just the presence of an `appCode` key: the
+ * previous `"appCode" in err` test would accept any Error that happened
+ * to carry that property — including a third-party one, or a partially
+ * built object — and `describeError` would then hand the console an
+ * entry whose `code`/`severity`/`title` were undefined, rendering as a
+ * blank, unstyled row. Anything that fails these checks is better off
+ * falling through to APP_UNEXPECTED, which at least reports a code.
+ *
+ * The `name` check pairs with `appError()` setting `err.name`; the
+ * field checks stand on their own, so a caught error from another realm
+ * (an iframe, a worker) still narrows correctly if it is shaped right.
+ */
 export function isAppError(err: unknown): err is AppError {
-  return err instanceof Error && "appCode" in err;
+  if (
+    typeof err !== "object" ||
+    err === null ||
+    typeof (err as Error).message !== "string" ||
+    (err as Error).name !== "AppError"
+  )
+    return false;
+  const { appCode } = err as Partial<AppError>;
+  return (
+    typeof appCode === "object" &&
+    appCode !== null &&
+    typeof appCode.code === "string" &&
+    typeof appCode.title === "string" &&
+    (appCode.severity === "error" ||
+      appCode.severity === "warning" ||
+      appCode.severity === "info")
+  );
 }
 
 /**

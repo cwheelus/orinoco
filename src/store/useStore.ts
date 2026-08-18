@@ -44,7 +44,6 @@ const MAX_LOG_ENTRIES = config.console.maxEntries;
 // try to render 50k lines.
 const MAX_LISTED_ROWS = config.console.maxListedRows;
 
-let nextLogId = 1;
 
 /**
  * Formats a skip list into console detail lines: the individual rows up
@@ -353,6 +352,14 @@ interface VisualizerState {
   // useState could not be shared, so each new message destroyed the
   // previous one.
   logEntries: LogEntry[];
+  // Next id to hand out to a log entry. Lives in the store rather than
+  // as a module-level counter so it shares the store's lifetime: under
+  // Vite's Fast Refresh a module-level `let` is re-initialized while
+  // the store's state survives, which would restart ids at 1 alongside
+  // already-issued higher ones. Consumers compare ids to decide what is
+  // new (Toolbar's unreviewed badge, App's banner dismissal), so a
+  // rewound counter would make fresh warnings register as already seen.
+  nextLogId: number;
   // Appends a diagnostic. Takes the ErrorCode registry entry rather
   // than loose strings, so code/severity/title always agree with
   // lib/errorCodes.ts.
@@ -483,7 +490,7 @@ export const useStore = create<VisualizerState>((set) => ({
       // with no explanation. Log it like any other exclusion.
       const remapLog: LogEntry[] = [
         {
-          id: nextLogId++,
+          id: state.nextLogId,
           timestamp: Date.now(),
           code: CODES.CSV_REMAPPED.code,
           severity: CODES.CSV_REMAPPED.severity,
@@ -502,6 +509,7 @@ export const useStore = create<VisualizerState>((set) => ({
           nextLog.length > MAX_LOG_ENTRIES
             ? nextLog.slice(nextLog.length - MAX_LOG_ENTRIES)
             : nextLog,
+        nextLogId: state.nextLogId + 1,
         dataPoints: rebuilt.points,
         pointMetadata: rebuilt.metadata,
         columnMapping: mapping,
@@ -583,10 +591,11 @@ export const useStore = create<VisualizerState>((set) => ({
   resetClassColors: () => set({ classColorOverrides: {} }),
   setClassColorOverrides: (classColorOverrides) => set({ classColorOverrides }),
   logEntries: [],
+  nextLogId: 1,
   pushLog: (code, message, detail) =>
     set((state) => {
       const entry: LogEntry = {
-        id: nextLogId++,
+        id: state.nextLogId,
         timestamp: Date.now(),
         code: code.code,
         severity: code.severity,
@@ -601,6 +610,7 @@ export const useStore = create<VisualizerState>((set) => ({
           next.length > MAX_LOG_ENTRIES
             ? next.slice(next.length - MAX_LOG_ENTRIES)
             : next,
+        nextLogId: state.nextLogId + 1,
       };
     }),
   clearLog: () => set({ logEntries: [] }),

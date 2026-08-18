@@ -15,6 +15,8 @@
 // ("this is a panel background") rather than by implementation
 // ("this is black at 70% opacity").
 
+import type { Severity } from "./errorCodes";
+
 export const PANEL = {
   // The icon strip and content pane's own background.
   bg: "bg-black/70 backdrop-blur-sm light:bg-white/80",
@@ -145,14 +147,18 @@ export const WARNING = {
   label: "text-amber-400 light:text-amber-600",
 };
 
-// Per-severity accent for Console rows. Keyed by the Severity union in
-// lib/errorCodes.ts, so a new severity there is a type error here until
-// it's given a color rather than silently rendering unstyled.
+// Per-severity accent for Console rows. `satisfies` (not a type
+// annotation) is what makes the comment above true: it requires an entry
+// for every member of the Severity union in lib/errorCodes.ts — adding
+// one there is a build error here until it's given a color, rather than
+// silently rendering unstyled — while still inferring the literal string
+// type of each value, which a `: Record<Severity, string>` annotation
+// would widen away.
 export const SEVERITY_TEXT = {
   error: "text-red-400 light:text-red-600",
   warning: "text-amber-400 light:text-amber-600",
   info: "text-sky-400 light:text-sky-600",
-};
+} satisfies Record<Severity, string>;
 
 export const KBD = {
   // A single keyboard-key chip (used for every WASD/arrow/Spc/Shift
