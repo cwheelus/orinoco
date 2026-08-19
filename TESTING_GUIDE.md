@@ -219,11 +219,11 @@ Not separately verified in the running application. `passesNumeric` is a pure fu
 
 Confirmed with fixture files in the running application:
 
-| File shape                                | Ratio for the affected column | Result                                                                                                                  |
-| ----------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 3 rows, 1 invalid value in one column     | 2/3 = 67%                     | The column is reclassified as text; the dataset loads as 2D using the remaining numeric columns; no warning is produced |
-| 10 rows, 1 invalid value in one column    | 9/10 = 90%                    | The column remains numeric; the single invalid row is skipped with a `CSV-050` warning naming the affected cell         |
-| 3 rows, every value in one column invalid | 0/3 = 0%     | Now reported: `Column "y": text (0/3 sampled values numeric)` appears in the `CSV-100` Console entry, same as any partial-failure case                          |
+| File shape                                | Ratio for the affected column | Result                                                                                                                                 |
+| ----------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 3 rows, 1 invalid value in one column     | 2/3 = 67%                     | The column is reclassified as text; the dataset loads as 2D using the remaining numeric columns; no warning is produced                |
+| 10 rows, 1 invalid value in one column    | 9/10 = 90%                    | The column remains numeric; the single invalid row is skipped with a `CSV-050` warning naming the affected cell                        |
+| 3 rows, every value in one column invalid | 0/3 = 0%                      | Now reported: `Column "y": text (0/3 sampled values numeric)` appears in the `CSV-100` Console entry, same as any partial-failure case |
 
 Fix applied: `parseCSV.ts`'s `ParseInterpretation` contract reports, on every successful load, which columns were classified as text and why — their numeric ratio and example invalid values. This part was never in question.
 
@@ -294,10 +294,10 @@ Non-trivial fixtures used during manual verification, for reuse or reference. Al
 
 Items identified that are not product defects, tracked separately from the fault-tracking sections above.
 
-| Item                                                                                                              | Note                                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item                                                                                                              | Note                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | README's "Test Data" section described `sample-data/mixed-sign-sample.csv` as "loaded automatically on app start" | Resolved by #57 — the startup auto-load and the bundled dataset are both gone, and that README section now documents the error-case fixtures instead. Historical note only. |
-| Two `__tests__` folders existed during initial test-suite setup                                                   | Resolved — all tests are consolidated into `src/lib/__tests__/`. Documented here as a historical note only.                                              |
+| Two `__tests__` folders existed during initial test-suite setup                                                   | Resolved — all tests are consolidated into `src/lib/__tests__/`. Documented here as a historical note only.                                                                 |
 
 ---
 
@@ -397,17 +397,18 @@ A passing `npm test` run does not indicate the application is fully verified —
 
 ## Current coverage
 
-| File                      | Tests | Covers                                                                                                                        |
-| ------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `parseCSV.test.ts`        | 22    | Column classification, malformed-file rejection, row-skip behavior, the `ParseInterpretation` contract, axis-mapping behavior |
-| `parseColorsCSV.test.ts`  | 15    | Header matching, malformed-row handling, the colors.csv typo scenario                                                         |
-| `truncateLabel.test.ts`   | 9     | The 8-character display-truncation specification                                                                              |
-| `passesNumeric.test.ts`   | 16    | Numeric filter evaluation, including the inverted-range fix                                                                   |
-| `colorValidation.test.ts` | 8     | Color-override comparison logic, including fresh re-validation across dataset changes                                         |
-| `errorCodes.test.ts`      | 6     | The `isAppError` shape guard and `describeError`'s APP-001 fallback (#58)                                                     |
-| `logIds.test.ts`          | 4     | Console log-id monotonicity across clears and ring-buffer trimming (#58)                                                      |
+| File                      | Tests | Covers                                                                                                                                               |
+| ------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parseCSV.test.ts`        | 22    | Column classification, malformed-file rejection, row-skip behavior, the `ParseInterpretation` contract, axis-mapping behavior                        |
+| `parseColorsCSV.test.ts`  | 15    | Header matching, malformed-row handling, the colors.csv typo scenario                                                                                |
+| `truncateLabel.test.ts`   | 9     | The 8-character display-truncation specification                                                                                                     |
+| `passesNumeric.test.ts`   | 16    | Numeric filter evaluation, including the inverted-range fix                                                                                          |
+| `colorValidation.test.ts` | 8     | Color-override comparison logic, including fresh re-validation across dataset changes                                                                |
+| `errorCodes.test.ts`      | 7     | The `isAppError` shape guard (including the realm-agnostic structural check) and `describeError`'s APP-001 fallback (#58)                            |
+| `logIds.test.ts`          | 4     | Console log-id monotonicity across clears and ring-buffer trimming (#58)                                                                             |
+| `gridSpace.test.ts`       | 24    | `computeGridSpace`'s three scaling modes, octant isolation, `toRenderSpace`, `ZERO_RENDER`, and `inOctant`'s zero-boundary partitioning (#64 Tier 1) |
 
-80 tests total.
+105 tests total.
 
 ---
 
