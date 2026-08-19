@@ -235,6 +235,12 @@ Filter points by value range on any axis:
 
 ![Data page showing class filters and point size controls](docs/images/filter.jpg)
 
+#### Point Transparency
+
+Points render with partial transparency, so overlapping or closely-clustered observations remain visible instead of merging into a single solid shape. This is especially noticeable when many points share the same or similar coordinates — for example, when two identical columns are mapped to the same axis, or when a dataset has several observations with very close values.
+
+Where points overlap, you'll see a darker or more saturated blend of their colors — this is a visual cue that multiple observations exist at that location, not a rendering error. Points always render at their exact plotted coordinates; transparency only changes how they're drawn, never where the data actually sits.
+
 ### Grid Page
 
 The Grid page controls how the reference grid is displayed and scaled.
