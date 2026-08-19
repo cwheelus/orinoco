@@ -407,8 +407,9 @@ A passing `npm test` run does not indicate the application is fully verified —
 | `errorCodes.test.ts`      | 7     | The `isAppError` shape guard (including the realm-agnostic structural check) and `describeError`'s APP-001 fallback (#58)                            |
 | `logIds.test.ts`          | 4     | Console log-id monotonicity across clears and ring-buffer trimming (#58)                                                                             |
 | `gridSpace.test.ts`       | 24    | `computeGridSpace`'s three scaling modes, octant isolation, `toRenderSpace`, `ZERO_RENDER`, and `inOctant`'s zero-boundary partitioning (#64 Tier 1) |
+| `classColors.test.ts`     | 13    | `getClassColor`'s precedence chain (override > built-in > generated), determinism, edge cases, and hex return format (#64 Tier 1)                    |
 
-105 tests total.
+118 tests total.
 
 ---
 
