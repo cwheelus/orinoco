@@ -244,16 +244,15 @@ export function PointCloud() {
       {/* One sphere shared by every instance; its radius IS the point
           size, so the size slider is an O(1) geometry swap. */}
       <sphereGeometry args={[pointRadius, SPHERE_SEGMENTS, SPHERE_SEGMENTS]} />
-      {/* EXPERIMENTAL (test/point-transparency-experiment): testing
-          whether opacity helps distinguish overlapping/coincident
-          points. depthWrite={false} is deliberate — with InstancedMesh,
-          transparent instances writing to the depth buffer in arbitrary
-          instance order causes visible sorting artifacts (nearer
-          transparent spheres can incorrectly occlude farther ones).
-          Disabling depth writes avoids that at the cost of transparent
-          instances always blending in draw order rather than strict
-          back-to-front — acceptable for spheres of uniform, small size,
-          worth revisiting if it looks wrong with mixed sizes. */}
+      {/* Semi-transparent so overlapping/coincident points remain
+          visually distinguishable instead of merging into one solid
+          shape — see #67. depthWrite={false} stops each transparent
+          instance from writing to the depth buffer, which would
+          otherwise let a nearer instance incorrectly hide a farther
+          one drawn after it. This does NOT make blending strictly
+          back-to-front — instances still blend in draw order, which
+          is acceptable for uniform, small spheres. Worth revisiting
+          if this material is ever used for meshes of mixed size. */}
       <meshStandardMaterial transparent opacity={0.5} depthWrite={false} />
     </instancedMesh>
   );
