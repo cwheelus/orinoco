@@ -390,9 +390,7 @@ orinoco/
 │   │       and grid math so the shape is defined exactly once
 │   │
 │   ├── App.tsx
-│   │   └── Application shell, Canvas, HUD, CSV-load orchestration,
-│   │       and mount-time loading of the bundled sample via the
-│   │       CSV pipeline
+│   │   └── Application shell, Canvas, HUD, and CSV-load orchestration
 │   │
 │   ├── main.tsx
 │   │   └── React entry point
