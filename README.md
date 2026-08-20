@@ -599,7 +599,7 @@ Built-in visualization categories:
 | `qc`       | `#00dd00` |
 | `zt`       | `#0000dd` |
 
-## Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) gets a color generated deterministically from its name, rather than failing.
+Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) gets a color generated deterministically from its name, rather than failing.
 
 # Deployment Configuration
 
