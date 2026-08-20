@@ -2,7 +2,7 @@
 
 Project Orinoco is a browser-native 3D visualization tool for exploring network telemetry. It projects selected traffic features into a three-dimensional Cartesian space, allowing analysts to inspect individual observations, navigate spatial relationships, and investigate clusters interactively.
 
-The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (at least two numeric columns, one or two text columns) can be loaded directly in-browser via the toolbar — the application starts blank, with no bundled or auto-loaded dataset.
+The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV containing at least two numeric columns and at least one text column can be loaded directly in-browser via the toolbar — the application starts blank, with no bundled or auto-loaded dataset.
 
 ---
 
@@ -195,7 +195,7 @@ Isolation clears automatically whenever a new CSV loads, since an octant chosen 
 
 ## Toolbar
 
-A Blender-style docked side panel — an icon strip for Data, Grid, Isolate, and Console pages, plus a resizable content pane for each page's controls.
+A Blender-style docked side panel with an icon strip providing access to visualization, data, navigation, and application controls, plus a resizable content pane for the selected control.
 
 See [USER_GUIDE.md's "Using the Toolbar"](USER_GUIDE.md#6-using-the-toolbar) for the full icon reference and each page's controls.
 
