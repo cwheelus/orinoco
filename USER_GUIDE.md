@@ -2,7 +2,7 @@
 
 **Project Orinoco — 3D Cyber Threat Intelligence Visualizer**
 
-*Last updated: July 2026*
+_Last updated: July 2026_
 
 ---
 
@@ -47,12 +47,12 @@ Orinoco runs entirely client-side — no server, no database, no cloud dependenc
 
 To run Orinoco from source, you need:
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| **Node.js** | v22.12.0 or newer | Required by the 3D camera-controls dependency |
-| **npm** | v10 or newer | Bundled with Node.js |
-| **Git** | Any recent version | To clone the repository |
-| **Web Browser** | Chrome, Firefox, Edge, or Safari | WebGL support required |
+| Tool            | Version                          | Notes                                         |
+| --------------- | -------------------------------- | --------------------------------------------- |
+| **Node.js**     | v22.12.0 or newer                | Required by the 3D camera-controls dependency |
+| **npm**         | v10 or newer                     | Bundled with Node.js                          |
+| **Git**         | Any recent version               | To clone the repository                       |
+| **Web Browser** | Chrome, Firefox, Edge, or Safari | WebGL support required                        |
 
 Verify your versions:
 
@@ -85,15 +85,19 @@ By default, the application serves at `http://localhost:5173`.
 
 ### 3.3 First Look
 
-On launch, Orinoco automatically loads the bundled **mixed-sign sample dataset** (500 rows with both positive and negative values). You will see:
+On launch, Orinoco opens with no dataset loaded. You will see:
 
-- **A symmetric 3D Cartesian grid** centered at the origin, with data-zero at the box center
-- **Three coordinate axes** (X, Y, Z) running through the origin with arrowheads and column-name labels
+- **A centered prompt** directing you to the paperclip icon in the toolbar to load a CSV
+- **A neutral 3D Cartesian grid** with placeholder X/Y/Z axis labels
+- **Three coordinate axes** running through the origin with arrowheads
 - **A horizontal grid plane** at data-value zero
 - **A faint wireframe box** outlining the plotting volume
-- **Colored data points** representing individual network flows
-- **A HUD panel** in the top-left showing the currently hovered point's metadata
 - **A toolbar** docked to the right edge for data and display controls
+
+Once you load a CSV (see [Section 7](#7-loading-your-own-csv-dataset)), the grid rescales to your data's actual range, axis labels update to your column names, and:
+
+- **Colored data points** appear, representing individual network flows
+- **A HUD panel** in the top-left shows metadata for whichever point you're hovering
 
 ![Orinoco boot state with symmetric grid and Grid page open](docs/images/main.jpg)
 
@@ -105,33 +109,33 @@ On launch, Orinoco automatically loads the bundled **mixed-sign sample dataset**
 
 Camera movement is always relative to the **active pivot point** — a reference coordinate in 3D space that starts at the origin `(0, 0, 0)`.
 
-| Input | Action |
-|-------|--------|
-| **W** | Move camera toward the pivot |
-| **S** | Move camera away from the pivot |
-| **A** | Orbit camera left around the pivot |
+| Input | Action                              |
+| ----- | ----------------------------------- |
+| **W** | Move camera toward the pivot        |
+| **S** | Move camera away from the pivot     |
+| **A** | Orbit camera left around the pivot  |
 | **D** | Orbit camera right around the pivot |
 
 ### 4.2 Pivot Movement
 
 Move the pivot point itself to explore different regions of the data:
 
-| Input | Action |
-|-------|--------|
-| **← / →** (Arrow Left / Right) | Move pivot along the X axis |
-| **↑ / ↓** (Arrow Up / Down) | Move pivot along the Z axis |
-| **Space** | Raise pivot along the Y axis |
-| **Shift** | Lower pivot along the Y axis |
+| Input                          | Action                       |
+| ------------------------------ | ---------------------------- |
+| **← / →** (Arrow Left / Right) | Move pivot along the X axis  |
+| **↑ / ↓** (Arrow Up / Down)    | Move pivot along the Z axis  |
+| **Space**                      | Raise pivot along the Y axis |
+| **Shift**                      | Lower pivot along the Y axis |
 
 When the pivot changes, the camera translates by the same offset, preserving your viewing angle. The pivot is marked by a **six-armed cross reticle** at the origin.
 
 ### 4.3 Mouse Controls
 
-| Input | Action |
-|-------|--------|
-| **Mouse Drag** | Rotate camera around pivot (Orbit mode) or translate view (Pan mode) |
-| **Mouse Hover** | Inspect point metadata in the HUD |
-| **Mouse Click** | Set clicked point as the new pivot |
+| Input           | Action                                                               |
+| --------------- | -------------------------------------------------------------------- |
+| **Mouse Drag**  | Rotate camera around pivot (Orbit mode) or translate view (Pan mode) |
+| **Mouse Hover** | Inspect point metadata in the HUD                                    |
+| **Mouse Click** | Set clicked point as the new pivot                                   |
 
 Toggle between **Orbit** and **Pan** modes using the **hand / pointer icon** in the toolbar.
 
@@ -155,11 +159,11 @@ Orinoco enforces soft limits to prevent losing the camera:
 
 Move your cursor over any data point to see its metadata in the **Point Analysis HUD** (top-left panel):
 
-| Field | Description |
-|-------|-------------|
-| **UID** | Unique identifier for the network flow |
-| **Classification** | Threat category (e.g., `normal`, `nss`, `qc`, `zt`) |
-| **X, Y, Z** | Coordinates in 3D space |
+| Field              | Description                                                       |
+| ------------------ | ----------------------------------------------------------------- |
+| **UID**            | Unique identifier for the network flow                            |
+| **Classification** | Threat category (e.g., `normal`, `nss`, `qc`, `zt`)               |
+| **X, Y, Z**        | Coordinates in 3D space                                           |
 | **Feature Values** | Raw values labeled with the actual column names from your dataset |
 
 ### 5.2 Click to Pivot
@@ -170,14 +174,14 @@ Click any data point to set it as the new investigation pivot. The camera will s
 
 Points are colored by their classification:
 
-| Class | Color | Hex |
-|-------|-------|-----|
+| Class    | Color      | Hex       |
+| -------- | ---------- | --------- |
 | `normal` | Light Gray | `#dddddd` |
-| `nss` | Red | `#dd0000` |
-| `qc` | Green | `#00dd00` |
-| `zt` | Blue | `#0000dd` |
+| `nss`    | Red        | `#dd0000` |
+| `qc`     | Green      | `#00dd00` |
+| `zt`     | Blue       | `#0000dd` |
 
-Unrecognized classes from custom CSVs will use a default fallback color.
+Any classification not in the table above gets a color generated automatically from its name. The same class name always produces the same color, every time you load it — so a custom classification stays visually consistent across sessions and datasets, even though it's not one of the four built-in colors.
 
 ---
 
@@ -192,14 +196,15 @@ Drag the border between the icon strip and the viewport to resize the content pa
 
 ### 6.1 Icon Strip
 
-| Icon | Action |
-|------|--------|
-| 📎 Paperclip | Open file picker to load a CSV |
-| 🔄 Reset | Return pivot to origin |
-| ✋ Hand / Pointer | Switch mouse drag between Orbit (rotate) and Pan (translate) |
-| 📊 Data | Open Data page (filters, point sizing) |
-| ⊞ Grid | Open Grid page (scaling, tick density, tick labels, grid visibility) |
-| ☐ Box | Open Isolate page (octant gizmo) — lights up when an octant is isolated |
+| Icon              | Action                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 📎 Paperclip      | Open file picker to load a CSV                                                                                            |
+| 🔄 Reset          | Return pivot to origin                                                                                                    |
+| ✋ Hand / Pointer | Switch mouse drag between Orbit (rotate) and Pan (translate)                                                              |
+| 📊 Data           | Open Data page (filters, point sizing)                                                                                    |
+| ⊞ Grid            | Open Grid page (scaling, tick density, tick labels, grid visibility)                                                      |
+| ☐ Box             | Open Isolate page (octant gizmo) — lights up when an octant is isolated                                                   |
+| ▶\_ Terminal      | Open the Console page (session diagnostics) — lights up with an unreviewed-issue badge when an error or warning is logged |
 
 ### Data Page
 
@@ -230,6 +235,12 @@ Filter points by value range on any axis:
 
 ![Data page showing class filters and point size controls](docs/images/filter.jpg)
 
+#### Point Transparency
+
+Points render with partial transparency, so overlapping or closely-clustered observations remain visible instead of merging into a single solid shape. This is especially noticeable when many points share the same or similar coordinates — for example, when two identical columns are mapped to the same axis, or when a dataset has several observations with very close values.
+
+Where points overlap, you'll see a darker or more saturated blend of their colors — this is a visual cue that multiple observations exist at that location, not a rendering error. Points always render at their exact plotted coordinates; transparency only changes how they're drawn, never where the data actually sits.
+
 ### Grid Page
 
 The Grid page controls how the reference grid is displayed and scaled.
@@ -250,11 +261,11 @@ A slider (3–30, default 10) controls how many tick marks appear along each axi
 
 #### Scaling Modes
 
-| Mode | Behavior |
-|------|----------|
-| **Auto-normalized** (default) | Each axis fills the box independently based on its own data range. Good for comparing shape when magnitudes differ wildly. |
-| **Auto-real scale** | One shared scale factor from the global farthest value across all axes. A unit of data is the same render length on every axis — true relative distances. |
-| **Custom** | Type a ± bound per axis. Any axis left blank falls back to its auto-normalized value. Useful for forcing a specific plotting range. |
+| Mode                          | Behavior                                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Auto-normalized** (default) | Each axis fills the box independently based on its own data range. Good for comparing shape when magnitudes differ wildly.                                |
+| **Auto-real scale**           | One shared scale factor from the global farthest value across all axes. A unit of data is the same render length on every axis — true relative distances. |
+| **Custom**                    | Type a ± bound per axis. Any axis left blank falls back to its auto-normalized value. Useful for forcing a specific plotting range.                       |
 
 Mode changes recompute the grid live. In **Auto-real scale**, small-range axes will bunch near the origin rather than filling the box.
 
@@ -266,14 +277,15 @@ The Isolate page lets you focus on one spatial corner (octant) of the data.
 
 A small 3D cube-of-cubes mirrors the main view's rotation, so the spatial corner you click is the one currently occupying that on-screen position.
 
-| Action | Result |
-|--------|--------|
-| **Click a cube** | That octant enlarges to fill the entire grid; all points outside it are hidden |
-| **Click the same cube again** | Reverts to the full grid (toggle behavior) |
-| **Click inside the outline but off any cube** | Reverts to the full grid |
-| **Click Reset** | Reverts to the full grid |
+| Action                                        | Result                                                                         |
+| --------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Click a cube**                              | That octant enlarges to fill the entire grid; all points outside it are hidden |
+| **Click the same cube again**                 | Reverts to the full grid (toggle behavior)                                     |
+| **Click inside the outline but off any cube** | Reverts to the full grid                                                       |
+| **Click Reset**                               | Reverts to the full grid                                                       |
 
 When an octant is isolated:
+
 - The grid rescales so the selected corner fills the box
 - The axes reposition so data-zero sits at a box corner instead of the center
 - Tick marks automatically refine to match the narrower range
@@ -288,7 +300,7 @@ When an octant is isolated:
 
 ## 7. Loading Your Own CSV Dataset
 
-You are not limited to the bundled sample. Any CSV matching the expected shape can be loaded directly in-browser.
+Orinoco ships with no default dataset — you load your own CSV directly in-browser, as long as it matches the expected shape.
 
 ### 7.1 Expected Format
 
@@ -308,6 +320,7 @@ CenB4K3qGMIMOfa2Z7,qc,142,0.387946954,71
 ```
 
 In this example:
+
 - `orig_bytes` → X axis
 - `invel_pps` → Y axis
 - `invel_bpp` → Z axis
@@ -335,13 +348,13 @@ If a loaded dataset has more than 2 numeric columns, an **Axis Mapping** section
 
 If the file fails to load, you will see a specific error message:
 
-| Error | Cause |
-|-------|-------|
-| Empty file | The file has no header row or no data rows |
-| Not enough numeric columns | The CSV has fewer than 2 numeric columns |
+| Error                       | Cause                                                 |
+| --------------------------- | ----------------------------------------------------- |
+| Empty file                  | The file has no header row or no data rows            |
+| Not enough numeric columns  | The CSV has fewer than 2 numeric columns              |
 | No text/label columns found | The CSV lacks text columns for UID and Classification |
-| No valid data rows | Every row had missing or invalid numeric values |
-| File read error | The browser could not read the file |
+| No valid data rows          | Every row had missing or invalid numeric values       |
+| File read error             | The browser could not read the file                   |
 
 > **Partial load banner:** If your CSV loads but some rows are skipped due to missing or invalid numeric values, a red banner appears showing which row numbers were excluded. The valid rows still render — you do not need to reload the file.
 
@@ -349,7 +362,7 @@ If the file fails to load, you will see a specific error message:
 
 - Manual axis mapping only appears once a dataset has more than 2 numeric columns — see **7.4**.
 - No manual override for which text column becomes UID vs. Classification — this is auto-detected by uniqueness ratio, though additional text columns beyond these two are captured as metadata rather than ignored (see **7.1**).
-- Datasets are held in memory only — reloading the page returns to the bundled default dataset.
+- Datasets are held in memory only — reloading the page clears the current dataset and returns to the empty-state prompt (see **3.3**).
 
 ---
 
@@ -366,6 +379,10 @@ If the file fails to load, you will see a specific error message:
 1. Click the **reset button** in the toolbar to return to the origin.
 2. Press **S** a few times to zoom out and reorient.
 3. The camera cannot zoom farther than 18 units from the pivot — if you hit the limit, orbit to a new angle.
+
+### I can't orbit or tilt the camera — it's locked flat
+
+This is expected behavior for a **2D dataset** (one with no Z-axis column mapped). Orinoco automatically locks the camera to a flat, top-down view over the X/Y plane, since orbiting a flat dataset would make it appear as a sliver or disappear entirely. Look for the **"2D · Camera Locked"** indicator near the Axis Mapping controls in the Data page — this confirms the lock is intentional, not a bug. Mapping a Z column back in (see **7.4**) restores normal 3D orbit/tilt controls.
 
 ### The grid disappeared
 
@@ -384,7 +401,7 @@ If the file fails to load, you will see a specific error message:
 
 ### Performance is slow with a large dataset
 
-- Orinoco uses **instanced mesh rendering** and has been tested with 10,000+ points.
+- Orinoco uses **instanced mesh rendering** and has been tested with 100,000+ points.
 - If performance degrades:
   - Use **class filters** to hide categories you don't need
   - Use **numeric filters** to reduce the visible point count
@@ -397,38 +414,39 @@ If the file fails to load, you will see a specific error message:
 
 ### Keyboard
 
-| Key | Action |
-|-----|--------|
-| **W** | Move camera toward pivot |
-| **S** | Move camera away from pivot |
-| **A** | Orbit camera left around pivot |
-| **D** | Orbit camera right around pivot |
-| **←** (Arrow Left) | Move pivot along X axis (negative) |
+| Key                 | Action                             |
+| ------------------- | ---------------------------------- |
+| **W**               | Move camera toward pivot           |
+| **S**               | Move camera away from pivot        |
+| **A**               | Orbit camera left around pivot     |
+| **D**               | Orbit camera right around pivot    |
+| **←** (Arrow Left)  | Move pivot along X axis (negative) |
 | **→** (Arrow Right) | Move pivot along X axis (positive) |
-| **↑** (Arrow Up) | Move pivot along Z axis (negative) |
-| **↓** (Arrow Down) | Move pivot along Z axis (positive) |
-| **Space** | Raise pivot along Y axis |
-| **Shift** | Lower pivot along Y axis |
+| **↑** (Arrow Up)    | Move pivot along Z axis (negative) |
+| **↓** (Arrow Down)  | Move pivot along Z axis (positive) |
+| **Space**           | Raise pivot along Y axis           |
+| **Shift**           | Lower pivot along Y axis           |
 
 ### Mouse
 
-| Action | Effect |
-|--------|--------|
-| **Hover** | Inspect point metadata in HUD |
-| **Click** | Set clicked point as new pivot |
-| **Drag (Orbit mode)** | Rotate camera around pivot |
-| **Drag (Pan mode)** | Translate view |
+| Action                | Effect                         |
+| --------------------- | ------------------------------ |
+| **Hover**             | Inspect point metadata in HUD  |
+| **Click**             | Set clicked point as new pivot |
+| **Drag (Orbit mode)** | Rotate camera around pivot     |
+| **Drag (Pan mode)**   | Translate view                 |
 
 ### Toolbar Shortcuts
 
-| Icon | Click Action |
-|------|--------------|
-| 📎 Paperclip | Load CSV file |
-| 🔄 Reset | Return pivot to origin |
-| ✋ Hand / Pointer | Toggle Orbit vs Pan mode |
-| 📊 Data | Open Data filters page |
-| ⊞ Grid | Open Grid display page |
-| ☐ Box | Open Isolate octant page |
+| Icon              | Click Action                  |
+| ----------------- | ----------------------------- |
+| 📎 Paperclip      | Load CSV file                 |
+| 🔄 Reset          | Return pivot to origin        |
+| ✋ Hand / Pointer | Toggle Orbit vs Pan mode      |
+| 📊 Data           | Open Data filters page        |
+| ⊞ Grid            | Open Grid display page        |
+| ☐ Box             | Open Isolate octant page      |
+| ▶\_ Terminal      | Open Console diagnostics page |
 
 ![Bottom HUD showing keyboard controls and class color legend](docs/images/hud.jpg)
 
@@ -442,4 +460,4 @@ If the file fails to load, you will see a specific error message:
 
 ---
 
-*© 2026 Sentient Solutions*
+_© 2026 Sentient Solutions_

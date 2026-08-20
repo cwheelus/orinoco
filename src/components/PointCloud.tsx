@@ -244,7 +244,16 @@ export function PointCloud() {
       {/* One sphere shared by every instance; its radius IS the point
           size, so the size slider is an O(1) geometry swap. */}
       <sphereGeometry args={[pointRadius, SPHERE_SEGMENTS, SPHERE_SEGMENTS]} />
-      <meshStandardMaterial />
+      {/* Semi-transparent so overlapping/coincident points remain
+          visually distinguishable instead of merging into one solid
+          shape — see #67. depthWrite={false} stops each transparent
+          instance from writing to the depth buffer, which would
+          otherwise let a nearer instance incorrectly hide a farther
+          one drawn after it. This does NOT make blending strictly
+          back-to-front — instances still blend in draw order, which
+          is acceptable for uniform, small spheres. Worth revisiting
+          if this material is ever used for meshes of mixed size. */}
+      <meshStandardMaterial transparent opacity={0.5} depthWrite={false} />
     </instancedMesh>
   );
 }

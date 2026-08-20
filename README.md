@@ -14,6 +14,7 @@ The application visualizes network flow features within a symmetric, signed 3D C
 [Watch Orinoco MVP Walkthrough 7/8/2026](https://youtu.be/Gr2Yjx_JF_4)
 [Watch Orinoco MVP Walkthrough 7/20/2026](https://youtu.be/_KvzO14yMGE)
 [Watch Orinoco Signed Grid & Octant Isolation Walkthrough](https://youtu.be/tIFLs0QYwfM)
+[Watch Orinoco Point Transparency & Axis Mapping Demo](https://github.com/user-attachments/assets/9858e940-f40c-4ced-95c5-f708c1d76758)
 
 Example walkthrough:
 
@@ -96,7 +97,7 @@ Analysts can load any CSV dataset directly in-browser via the toolbar's file pic
 
 Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to any one dataset.
 
-**The app starts blank (#57):** no dataset is bundled and none is auto-loaded. The store starts empty, the scene shows a neutral X/Y/Z grid, and a centered prompt points at the toolbar's paperclip until the analyst loads a CSV. A deployment that *does* want a dataset on open sets `data.sampleDataset` in `config.json` to a path or URL the browser can fetch; it is fetched at startup and run through the exact same `parseCSV → setDataPoints` pipeline a user upload takes, so there is still no separate default-data code path.
+**The app starts blank (#57):** no dataset is bundled and none is auto-loaded. The store starts empty, the scene shows a neutral X/Y/Z grid, and a centered prompt points at the toolbar's paperclip until the analyst loads a CSV. A deployment that _does_ want a dataset on open sets `data.sampleDataset` in `config.json` to a path or URL the browser can fetch; it is fetched at startup and run through the exact same `parseCSV → setDataPoints` pipeline a user upload takes, so there is still no separate default-data code path.
 
 ```mermaid
 flowchart LR
@@ -772,10 +773,10 @@ The app ships with no dataset (#57) — supply your own CSV through the toolbar'
 
 Fixtures for manually exercising the loader's REJECTION paths live in `sample-data/`:
 
-| File                   | Purpose                                                                                              |
-| ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| `error-showcase.csv`   | Several row-level exclusion causes in one file, for checking the Console's per-cause summary          |
-| `error-cases/*.csv`    | One file per error code (`csv-001`…`csv-004`, `clr-001`…`clr-050`), for confirming each rejection surfaces with the right code |
+| File                 | Purpose                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `error-showcase.csv` | Several row-level exclusion causes in one file, for checking the Console's per-cause summary                                   |
+| `error-cases/*.csv`  | One file per error code (`csv-001`…`csv-004`, `clr-001`…`clr-050`), for confirming each rejection surfaces with the right code |
 
 Any CSV with at least two numeric columns and one text column will load; see [TESTING_GUIDE.md](TESTING_GUIDE.md) for the manual QA procedure these fixtures support.
 
