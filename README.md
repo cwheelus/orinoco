@@ -90,9 +90,6 @@ Analysts load any CSV directly in-browser via the toolbar's file picker — the 
 
 See [USER_GUIDE.md's "Loading Your Own CSV Dataset"](USER_GUIDE.md#7-loading-your-own-csv-dataset) for the expected format, loading steps, manual axis mapping, and error handling.
 
-- Manual axis selection is only exposed once a dataset has more than 2 numeric columns — with exactly 2, there's nothing to choose between, so the selector is intentionally hidden to keep the interface minimal
-- No manual override for which text column becomes `uid` vs. `class` — this is still auto-detected by uniqueness ratio
-
 ---
 
 ## Tactical Navigation
