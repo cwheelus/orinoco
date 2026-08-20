@@ -102,7 +102,7 @@ describe("getClassColor - generated color determinism", () => {
 });
 
 describe("getClassColor - return format", () => {
-  it("always returns a lowercase 6-digit hex string, regardless of which tier resolved it", () => {
+  it("always returns a 6-digit hex string (#rrggbb), regardless of which tier resolved it", () => {
     const hexPattern = /^#[0-9a-f]{6}$/;
     expect(getClassColor("normal")).toMatch(hexPattern); // built-in
     expect(getClassColor("normal", { normal: "#ABCDEF" })).toMatch(
