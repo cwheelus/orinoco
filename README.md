@@ -601,6 +601,8 @@ Built-in visualization categories:
 
 Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) gets a color generated deterministically from its name, rather than failing.
 
+---
+
 # Deployment Configuration
 
 Most values that would otherwise be hardcoded — grid dimensions, point sizing, camera speeds and zoom limits, startup defaults, slider ranges, accepted CSV/color-file header names, and diagnostics log limits — live in a single `config.json` at the project root instead of scattered across component files.
