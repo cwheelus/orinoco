@@ -366,7 +366,6 @@ orinoco/
 │   │   │   └── Auto-detecting CSV parser — classifies columns,
 │   │   │       maps them to X/Y/Z/uid/class, validates and reports errors
 │   │   └── parseColorsCSV.ts
-│   │   ├── parseColorsCSV.ts
 │   │   │   └── Parses a colors.csv override file, mapping class names
 │   │   │       to hex colors with flexible header matching
 │   │   ├── colorValidation.ts
@@ -569,7 +568,7 @@ Icon library used for interface elements, including the toolbar's icon strip (pa
 
 # Data Configuration
 
-The application bundles no dataset at all — not a static `data.json`, and not a sample CSV. It opens on an empty grid and waits for the analyst to load a file (#57). A deployer who wants a dataset loaded on open points `data.sampleDataset` (in `config.json`) at a path or URL the browser can fetch; that file goes through the same `parseCSV → setDataPoints` pipeline a manual upload does, so there is no separate hardcoded-data code path either way.
+The application does not bundle a dataset. It opens on an empty grid and waits for the analyst to load a CSV. A deployer who wants a dataset loaded on open can point `data.sampleDataset` (in `config.json`) at a path or URL the browser can fetch; that file goes through the same `parseCSV → setDataPoints` pipeline a manual upload does, so there is no separate hardcoded-data code path either way.
 
 Every loaded dataset, whether fetched at startup or picked from the toolbar, shares the same internal shape:
 
@@ -678,9 +677,9 @@ Runs the automated Vitest suite (118 tests covering CSV/color-file parsing, filt
 
 ## Test Data
 
-The app ships with no dataset (#57) — supply your own CSV through the toolbar's paperclip icon.
+The application ships without a dataset. Supply a CSV through the toolbar's paperclip icon, or configure an optional startup dataset through `data.sampleDataset` in `config.json`.
 
-Fixtures for manually exercising the loader's REJECTION paths live in `sample-data/`:
+Fixtures for manually exercising the loader's rejection paths are provided in `sample-data/`:
 
 | File                 | Purpose                                                                                                                        |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -715,7 +714,7 @@ Pulled directly from [package.json](package.json)
 
 See the [Issues tab](https://github.com/cwheelus/orinoco/issues) for planned work and open feature requests.
 
-- **Retake README screenshots** — the Screenshots section still shows placeholders (`main.png`, `data_info.png`) predating the signed-grid/octant-isolation rework (#42). Needs fresh captures of the main visualization view and the Point Analysis HUD, ideally also covering newer UI (2D camera lock, Diagnostics Console) not shown in any current screenshot.
+- **Update README screenshots** — replace the placeholder `main.png` and `data_info.png` images with current captures reflecting the signed-grid and octant-isolation interface, along with newer features such as 2D camera lock and the Diagnostics Console.
 
 ---
 
