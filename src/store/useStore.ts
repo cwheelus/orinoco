@@ -238,6 +238,14 @@ interface VisualizerState {
   // AUTOMATIC size already scales down with point count (see
   // PointCloud.tsx); this is the analyst's manual override on top.
   pointSizeScale: number;
+  // Alpha every point renders at, 0-1, driven by the "Point opacity"
+  // slider in the Toolbar's Data page. Below 1, overlapping or
+  // coincident points blend instead of merging into one solid shape
+  // (#67) — the denser the cloud, the lower this wants to be. 1
+  // renders points fully opaque, which reads cleaner on sparse data
+  // where nothing overlaps. Starts at config.json's
+  // defaults.pointOpacity.
+  pointOpacity: number;
   // The distinct class names in the current dataset (first-seen order).
   // Drives the Data page's class-visibility toggle list.
   availableClasses: string[];
@@ -328,6 +336,9 @@ interface VisualizerState {
   // Sets the user point-size multiplier. Called from the Data page's
   // "Point size" slider in the Toolbar.
   setPointSizeScale: (v: number) => void;
+  // Sets the point alpha. Called from the Data page's "Point opacity"
+  // slider in the Toolbar.
+  setPointOpacity: (v: number) => void;
   // Toggles whether a class is hidden. Called from the Data page's
   // per-class visibility buttons.
   toggleClassHidden: (className: string) => void;
@@ -408,6 +419,9 @@ export const useStore = create<VisualizerState>((set) => ({
   activeTool: config.defaults.activeTool,
   // Point size starts at the automatic size (no manual scaling).
   pointSizeScale: config.defaults.pointSizeScale,
+  // Points start semi-transparent, so overlap is legible on first
+  // paint without the analyst having to find the slider (#67).
+  pointOpacity: config.defaults.pointOpacity,
   // Filters start fully open — every class shown, no numeric filtering.
   // Empty until the sample CSV loads on mount (setDataPoints fills it).
   availableClasses: [],
@@ -537,6 +551,7 @@ export const useStore = create<VisualizerState>((set) => ({
   toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
   setActiveTool: (activeTool) => set({ activeTool }),
   setPointSizeScale: (pointSizeScale) => set({ pointSizeScale }),
+  setPointOpacity: (pointOpacity) => set({ pointOpacity }),
   toggleClassHidden: (className) =>
     set((state) => ({
       hiddenClasses: state.hiddenClasses.includes(className)

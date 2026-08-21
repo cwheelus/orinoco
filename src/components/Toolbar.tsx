@@ -38,6 +38,10 @@ import { truncateLabel } from "../lib/truncateLabel";
 // `limits` section.
 const POINT_SIZE_SLIDER = config.limits.pointSizeSlider;
 const TICK_DENSITY_SLIDER = config.limits.tickDensitySlider;
+// Range of the Data page's point-opacity slider. Its floor is above 0
+// on purpose — a fully invisible cloud is indistinguishable from a
+// failed load, so the analyst can go faint but not blank.
+const POINT_OPACITY_SLIDER = config.limits.pointOpacitySlider;
 // `accept` filter for both file pickers. A UI hint only — the parsers
 // still validate real content, since accept is bypassable via
 // drag-and-drop or a renamed file.
@@ -218,6 +222,8 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
   const gridVisible = useStore((state) => state.gridVisible);
   const pointSizeScale = useStore((state) => state.pointSizeScale);
   const setPointSizeScale = useStore((state) => state.setPointSizeScale);
+  const pointOpacity = useStore((state) => state.pointOpacity);
+  const setPointOpacity = useStore((state) => state.setPointOpacity);
   const toggleGrid = useStore((state) => state.toggleGrid);
   // Dark/light mode + its toggle — drives the icon-strip's sun/moon
   // button, the very first action in the strip (see below).
@@ -938,6 +944,50 @@ export function Toolbar({ onFileSelected, onColorFileSelected }: ToolbarProps) {
                       Reset
                     </button>
                     <span>Larger</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className={`text-[10px] font-bold ${TEXT.body}`}>
+                      Point opacity
+                    </p>
+                    <span
+                      className={`text-[10px] font-mono ${TEXT.muted} tabular-nums`}
+                    >
+                      {Math.round(pointOpacity * 100)}%
+                    </span>
+                  </div>
+                  {/* Alpha every point renders at — see PointCloud.tsx.
+                      Lower it on a dense cloud so overlapping points
+                      read as a blend rather than one solid shape; raise
+                      it to 100% on sparse data, where nothing overlaps
+                      and full color is easier to read. */}
+                  <input
+                    type="range"
+                    min={POINT_OPACITY_SLIDER.min}
+                    max={POINT_OPACITY_SLIDER.max}
+                    step={POINT_OPACITY_SLIDER.step}
+                    value={pointOpacity}
+                    onChange={(e) =>
+                      setPointOpacity(parseFloat(e.target.value))
+                    }
+                    className="w-full accent-blue-500 cursor-pointer"
+                    aria-label="Point opacity"
+                  />
+                  <div
+                    className={`flex justify-between text-[9px] ${TEXT.faint} mt-0.5`}
+                  >
+                    <span>Fainter</span>
+                    <button
+                      onClick={() =>
+                        setPointOpacity(config.defaults.pointOpacity)
+                      }
+                      className="hover:text-white/70 transition-colors"
+                      title="Reset to the default opacity"
+                    >
+                      Reset
+                    </button>
+                    <span>Solid</span>
                   </div>
                 </div>
               </>
