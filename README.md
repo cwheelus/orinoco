@@ -2,7 +2,7 @@
 
 Project Orinoco is a browser-native 3D visualization tool for exploring network telemetry. It projects selected traffic features into a three-dimensional Cartesian space, allowing analysts to inspect individual observations, navigate spatial relationships, and investigate clusters interactively.
 
-The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (at least two numeric columns, one or two text columns) can be loaded directly in-browser — the bundled sample dataset itself now loads through this same CSV pipeline, rather than a separate hardcoded data path.
+The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (at least two numeric columns, one or two text columns) can be loaded directly in-browser via the toolbar — the application starts blank, with no bundled or auto-loaded dataset.
 
 ---
 
@@ -72,7 +72,7 @@ The reference frame is drawn in two parts:
 
 Each axis is independently scaled to the dataset's numeric range by default — tick labels always reflect real data-space values, and recompute automatically whenever a new dataset loads or the scaling mode changes (see **Scaling Modes** below).
 
-Data dimensions (bundled sample dataset):
+Example axis mapping for a typical network-flow CSV:
 
 | Feature    | Axis |
 | ---------- | ---- |
@@ -80,85 +80,23 @@ Data dimensions (bundled sample dataset):
 | orig_bytes | X    |
 | invel_bpp  | Z    |
 
-A loaded CSV's own column names replace these automatically — see **Dynamic Dataset Loading** below.
+Column names and axis assignment are entirely dataset-driven — see **Dynamic Dataset Loading** below.
 
 ---
 
 ## Dynamic Dataset Loading
 
-Analysts can load any CSV dataset directly in-browser via the toolbar's file picker, rather than being limited to the bundled sample. The parser (`src/lib/parseCSV.ts`) auto-detects columns instead of assuming fixed names:
+Analysts load any CSV directly in-browser via the toolbar's file picker — the parser auto-detects numeric and text columns, maps them to axes automatically, and reports specific errors for malformed files rather than failing silently. The app starts blank (#57): no dataset is bundled or auto-loaded.
 
-1. Each column is classified as **numeric** or **text** by sampling its values
-2. With exactly 2 numeric columns, the dataset is treated as 2D (Z synthesized as 0). With 3 or more, the first three (in header order) become the default X/Y/Z — the analyst can override this afterward via the Data panel's Axis Mapping selectors, which apply instantly against the retained rows without re-parsing the file
-3. Text columns are mapped to a unique identifier (`uid`) and a classification label (`class`) — the column with the highest ratio of unique values is treated as the identifier; any additional text columns are captured as point metadata, shown in the Point Analysis HUD
-4. Malformed files (fewer than 2 numeric columns, no text columns, empty file) fail with a specific, visible error message rather than silently producing bad output or crashing
-5. Rows with missing or invalid numeric values are skipped individually rather than failing the whole file — a banner reports which row numbers were excluded
-6. Optionally, a second CSV can be loaded to override classification colors: a two-column file mapping class names to hex colors (e.g. `className,color`). Header names are matched flexibly (case-insensitive, ignoring spaces/underscores/hyphens), so `Class_Name` or `class name` are both accepted. Malformed rows (missing header, invalid hex value, empty class name) are skipped individually and reported in the Console, same as dataset CSV parsing — a color file doesn't have to be perfect to load the valid pairs it does contain
-
-Once a file loads successfully, the grid's scale, the axis labels, the Point Analysis HUD panel's metric labels, and the rendered points all update together — nothing in the visualization stays hardcoded to any one dataset.
-
-**The app starts blank (#57):** no dataset is bundled and none is auto-loaded. The store starts empty, the scene shows a neutral X/Y/Z grid, and a centered prompt points at the toolbar's paperclip until the analyst loads a CSV. A deployment that _does_ want a dataset on open sets `data.sampleDataset` in `config.json` to a path or URL the browser can fetch; it is fetched at startup and run through the exact same `parseCSV → setDataPoints` pipeline a user upload takes, so there is still no separate default-data code path.
-
-```mermaid
-flowchart LR
-    A[User selects CSV via Toolbar paperclip] --> B[parseCSV.ts]
-    B --> C{At least 2 numeric columns found?}
-    C -- No --> D[Reject with specific error message]
-    D --> E[Error banner shown, previous dataset stays active]
-    C -- Yes --> F[Classify text columns: uid = most unique values, class = remaining column]
-    F --> G[Default mapping: first 2/3 numeric columns to x/y/z]
-    G --> H[setDataPoints in store]
-    H --> I[computeGridSpace recomputes scale, ranges, and octant isolation clears]
-    H --> J[axisLabels updated]
-    I --> K[Grid and points re-render]
-    J --> K
-    K --> L[Analyst may remap axes via Data panel]
-    L --> M[setColumnMapping rebuilds points from retained rows, no re-parse]
-    M --> H
-```
-
-**Known limitations (accepted for the current release):**
-
-- Manual axis selection is only exposed once a dataset has more than 2 numeric columns — with exactly 2, there's nothing to choose between, so the selector is intentionally hidden to keep the interface minimal
-- No manual override for which text column becomes `uid` vs. `class` — this is still auto-detected by uniqueness ratio
+See [USER_GUIDE.md's "Loading Your Own CSV Dataset"](USER_GUIDE.md#7-loading-your-own-csv-dataset) for the expected format, loading steps, manual axis mapping, and error handling.
 
 ---
 
 ## Tactical Navigation
 
-The visualization environment supports analyst-focused navigation. Keyboard behavior depends on whether the dataset has a Z axis mapped (3D mode) or not (2D mode, Z = None) — see 2D Mode below for why.
+WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot/tilt guardrails against runaway camera movement.
 
-| Input         | 3D Mode                                                                                        | 2D Mode (Z = None)                   |
-| ------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------ |
-| W             | Move toward current pivot                                                                      | Disabled                             |
-| S             | Move away from current pivot                                                                   | Disabled                             |
-| A             | Orbit left around pivot                                                                        | Disabled                             |
-| D             | Orbit right around pivot                                                                       | Disabled                             |
-| Left / Right  | Move pivot along the X axis                                                                    | Move pivot along the X axis          |
-| Up / Down     | Move pivot along the Z axis                                                                    | Move pivot along the Y axis          |
-| Space / Shift | Raise / lower pivot along the Y axis                                                           | Raise / lower pivot along the Y axis |
-| Mouse Drag    | Free camera rotation, or pan (translate view), depending on the active tool set in the Toolbar | Pan only — rotation is locked        |
-| Mouse Scroll  | Zoom                                                                                           | Zoom                                 |
-| Mouse Hover   | Inspect point metadata                                                                         | Inspect point metadata               |
-| Mouse Click   | Set selected node as new pivot                                                                 | Set selected node as new pivot       |
-| Toolbar Reset | Return pivot to origin                                                                         | Return pivot to origin               |
-
-### 2D Mode
-
-When the active dataset has no Z column mapped (Z = None), the camera locks to a flat, top-down view looking straight down the Z axis at the X/Y plane — the plane the data is actually plotted on. This prevents the camera from tilting or orbiting to an angle where the flat dataset would appear as a sliver or disappear from view entirely.
-
-- The camera snap preserves the current zoom distance rather than resetting to a default
-- W/S (zoom-toward-pivot) and A/D (orbit) are disabled, along with mouse-drag rotation — orbit has no meaningful effect on a flat plane
-- Up/Down, which drive Z traversal in 3D, are redirected to drive Y instead, since Z has no spatial role in 2D — this keeps all four arrow keys meaningful regardless of mode
-- A passive "2D · Camera Locked" indicator appears near the Axis Mapping controls in the Toolbar's Data page, and the orbit/pan toolbar button's tooltip explains why orbit is unavailable
-- Switching a Z column back in resumes normal 3D controls without forcing a re-snap
-
-### Navigation Guardrails
-
-- **Zoom limits** — a shared min/max camera-to-pivot distance (0.15 / 18 by default, configurable via `config.json`'s `camera` section), enforced both by OrbitControls' scroll dolly and the W/S keys, so the camera can neither pass through a point at close range in an unbounded way nor fly infinitely far out
-- **Pivot bounds** — the pivot cannot be moved past a configurable multiple of the grid's half-extent beyond the walls (50% by default, `config.json`'s `camera.pivotLimitFactor`), clamped by a shared helper used by both arrow-key traversal and drag-panning, so rotation and the pivot marker stay in lockstep even when the clamp engages
-- **Stuck-key protection** — OS screenshot shortcuts that don't deliver a `keyup` while a modifier key is held (e.g. macOS Cmd+Shift+4) are detected and clear all held movement keys, so the camera can't drift indefinitely from a "stuck" key
-- **Tilt clamping** — in 3D mode, vertical orbit (tilt) stops just short of straight-up/straight-down rather than passing through, preventing gimbal-flip disorientation; horizontal orbit is unrestricted
+See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference and 2D mode behavior.
 
 ---
 
@@ -196,7 +134,7 @@ Displayed information includes:
 
 The interface uses a security operations center inspired design with high-contrast visualization and a glass-morphism HUD.
 
-Current classification visualization (bundled sample dataset):
+Built-in classification colors:
 
 | Data Value | Color     |
 | ---------- | --------- |
@@ -205,7 +143,7 @@ Current classification visualization (bundled sample dataset):
 | `qc`       | `#00dd00` |
 | `zt`       | `#0000dd` |
 
-A loaded CSV's own class values inherit these colors where names match, and fall back to a default color for any unrecognized class.
+A loaded CSV's own class values inherit these colors where names match. Any other class gets a color generated deterministically from its name — the same class name always produces the same color, on every reload and every dataset.
 
 ---
 
@@ -257,43 +195,17 @@ Isolation clears automatically whenever a new CSV loads, since an octant chosen 
 
 ## Toolbar
 
-A Blender-style docked side panel provides quick access to data and display controls, without needing to memorize keyboard shortcuts for everything.
+A Blender-style docked side panel — an icon strip for Data, Grid, Isolate, and Console pages, plus a resizable content pane for each page's controls.
 
-**Layout:** an icon strip sits fixed between the 3D viewport and a resizable content pane, both docked to the screen's right edge. Dragging the border on the icon strip's viewport-facing side resizes the content pane open or shut — matching the interaction pattern of Blender's Properties editor.
-
-**Icon strip contents:**
-
-| Icon           | Action                                                                                                                     |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Paperclip      | Opens the native file picker to load a CSV                                                                                 |
-| Reset          | Returns the pivot to the origin                                                                                            |
-| Hand / Pointer | Switches the mouse-drag behavior between orbit (rotate around pivot) and pan (translate view)                              |
-| Data           | Opens a panel for class-visibility filtering, per-axis numeric filters, and point-size scaling                             |
-| Grid           | Opens a panel for grid visibility, tick labels, tick density, and scaling mode selection                                   |
-| Box            | Opens the Isolate page (octant gizmo) — lights up while an octant is isolated                                              |
-| Terminal       | Opens the Console page (session diagnostics) — lights up with an unreviewed-issue badge when an error or warning is logged |
-
-Grid visibility was moved from a standalone icon-strip toggle into the Grid page itself, consolidating display settings into one place.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Collapsed
-    Collapsed --> Open: click page icon or drag border open
-    Open --> Collapsed: click same page icon or drag border past close threshold
-    Open --> Open: click different page icon, width preserved
-```
+See [USER_GUIDE.md's "Using the Toolbar"](USER_GUIDE.md#6-using-the-toolbar) for the full icon reference and each page's controls.
 
 ---
 
 ## Data Filtering & Point Sizing
 
-The Data page in the Toolbar supports narrowing down the visible point cloud:
+Class-visibility toggles, per-axis numeric range filters, and density-based point sizing — all rendered as a single instanced mesh, so filtering never remounts or reallocates.
 
-- **Class visibility filtering** — individual classification categories can be hidden from the render, each shown with its assigned color swatch
-- **Per-axis numeric filters** — points can be filtered by value range on any of the three axes, using an operator dropdown (>, ≥, <, ≤, =, between) plus one or two value boxes
-- **Point-size scaling** — point size adjusts automatically based on dataset density (denser datasets get smaller points so they don't merge into a blob), with a manual multiplier slider (range configurable via `config.json`'s `limits.pointSizeSlider`) and one-click reset to the automatic size
-
-Rendering is done as a single instanced mesh, so filtering by class, numeric range, or octant isolation doesn't remount or reallocate anything — hidden points are simply excluded from the draw call.
+See [USER_GUIDE.md's Data Page section](USER_GUIDE.md#data-page) for the full filter and sizing controls.
 
 ---
 
@@ -486,7 +398,7 @@ orinoco/
 │   │   └── React entry point
 │   │
 │   ├── vite-env.d.ts
-│   │   └── Type declarations enabling the `?raw` CSV import
+│   │   └── Vite/TypeScript environment type declarations
 │   │
 │   └── index.css
 │       └── Tailwind CSS configuration
@@ -555,7 +467,6 @@ Used for:
 
 - Fast development workflow
 - Optimized production builds
-- Raw-text CSV import (`?raw`) for the bundled sample dataset
 
 ---
 
@@ -676,7 +587,7 @@ Every loaded dataset, whether fetched at startup or picked from the toolbar, sha
 
 Column-to-axis mapping is produced by `parseCSV.ts`'s auto-detection — see **Dynamic Dataset Loading**.
 
-Current visualization categories (bundled sample dataset):
+Built-in visualization categories:
 
 | Data Value | Color     |
 | ---------- | --------- |
@@ -685,7 +596,7 @@ Current visualization categories (bundled sample dataset):
 | `qc`       | `#00dd00` |
 | `zt`       | `#0000dd` |
 
-Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) falls back to a default color rather than failing.
+Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) gets a color generated deterministically from its name, rather than failing.
 
 ---
 
@@ -745,7 +656,7 @@ npm install
 npm run dev
 ```
 
-By default this serves the app at [http://localhost:5173](http://localhost:5173) (Vite's default dev port). On load, the app boots directly into the bundled mixed-sign sample dataset.
+By default this serves the app at [http://localhost:5173](http://localhost:5173) (Vite's default dev port). The app opens blank — load a CSV via the toolbar's paperclip icon to get started.
 
 ## Build for Production
 
@@ -765,7 +676,7 @@ npm run lint
 npm test
 ```
 
-Runs the automated Vitest suite (80 tests covering CSV/color-file parsing, filters, truncation, the error-code guard, and Console log-id behavior). See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
+Runs the automated Vitest suite (118 tests covering CSV/color-file parsing, filters, truncation, the error-code guard, Console log-id behavior, grid geometry, and classification-color resolution). See [TESTING_GUIDE.md](TESTING_GUIDE.md) for setup notes, testing conventions, and a full breakdown of what is and isn't covered.
 
 ## Test Data
 
@@ -828,7 +739,8 @@ Project Orinoco is a functional MVP demonstrating:
 - Instanced point rendering with count-adaptive sizing for large datasets
 - Real-time metadata inspection, labeled with the active dataset's real column names
 - SOC-style analyst interface
-- An automated Vitest regression suite (80 tests) covering CSV/color-file parsing, numeric filters, display truncation, the error-code type guard, and Console log-id behavior — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- Semi-transparent point rendering, so overlapping or closely-clustered observations remain visually distinguishable instead of merging into a single shape
+- An automated Vitest regression suite (118 tests) covering CSV/color-file parsing, numeric filters, display truncation, the error-code type guard, Console log-id behavior, grid geometry, and classification-color resolution — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ---
 
