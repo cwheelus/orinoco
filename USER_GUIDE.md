@@ -2,7 +2,7 @@
 
 **Project Orinoco — 3D Cyber Threat Intelligence Visualizer**
 
-_Last updated: July 2026_
+_Last updated: August 2026_
 
 ---
 
@@ -18,6 +18,7 @@ _Last updated: July 2026_
    - [Grid Page](#grid-page)
    - [Isolate Page](#isolate-page)
 7. [Loading Your Own CSV Dataset](#7-loading-your-own-csv-dataset)
+   - [Loading Custom Classification Colors](#77-loading-custom-classification-colors)
 8. [Troubleshooting](#8-troubleshooting)
 9. [Keyboard & Mouse Reference](#9-keyboard--mouse-reference)
 
@@ -196,15 +197,17 @@ Drag the border between the icon strip and the viewport to resize the content pa
 
 ### 6.1 Icon Strip
 
-| Icon              | Action                                                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 📎 Paperclip      | Open file picker to load a CSV                                                                                            |
-| 🔄 Reset          | Return pivot to origin                                                                                                    |
-| ✋ Hand / Pointer | Switch mouse drag between Orbit (rotate) and Pan (translate)                                                              |
-| 📊 Data           | Open Data page (filters, point sizing)                                                                                    |
-| ⊞ Grid            | Open Grid page (scaling, tick density, tick labels, grid visibility)                                                      |
-| ☐ Box             | Open Isolate page (octant gizmo) — lights up when an octant is isolated                                                   |
-| ▶\_ Terminal      | Open the Console page (session diagnostics) — lights up with an unreviewed-issue badge when an error or warning is logged |
+| Icon               | Action                                                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| 🌙 / ☀️ Moon / Sun | Toggle between dark mode and light mode                                                                                    |
+| 📎 Paperclip       | Open file picker to load a CSV                                                                                             |
+| 🎨 Palette         | Open file picker to load a `colors.csv` classification color override (see **7.7 Loading Custom Classification Colors**)   |
+| 🔄 Reset           | Return pivot to origin                                                                                                     |
+| ✋ Hand / Pointer  | Switch mouse drag between Orbit (rotate) and Pan (translate) — icon swaps to reflect the active mode                       |
+| 🗄️ Data            | Open Data page (filters, point sizing)                                                                                     |
+| ⊞ Grid             | Open Grid page (scaling, tick density, tick labels, grid visibility)                                                       |
+| ☐ Isolate          | Open Isolate page (octant gizmo) — lights up when an octant is isolated                                                    |
+| ▶\_ Terminal       | Open the Console page (session diagnostics) — lights up with an un-reviewed-issue badge when an error or warning is logged |
 
 ### Data Page
 
@@ -364,6 +367,43 @@ If the file fails to load, you will see a specific error message:
 - No manual override for which text column becomes UID vs. Classification — this is auto-detected by uniqueness ratio, though additional text columns beyond these two are captured as metadata rather than ignored (see **7.1**).
 - Datasets are held in memory only — reloading the page clears the current dataset and returns to the empty-state prompt (see **3.3**).
 
+### 7.7 Loading Custom Classification Colors
+
+Classification colors resolve in this order: a manually loaded override, then the built-in table (see **5.3 Class Colors**), then a color generated deterministically from the class name. Analysts can supply overrides with a custom `colors.csv` file.
+
+#### Format
+
+A `colors.csv` file needs a class-name column and a color column — column names are matched flexibly (case-insensitive, ignoring spaces, underscores, and hyphens), so small header variations are still accepted.
+
+```csv
+className,color
+class_00000,#390062
+class_00001,#0cce35
+class_00002,#8cd0a4
+```
+
+- **A header row is required.** If neither a recognizable class-name column nor a recognizable color column is found, the entire file is rejected — this is a whole-file error, not a per-row skip.
+- **One row per class.** Extra columns beyond the class-name and color columns are ignored rather than causing a rejection.
+
+#### Loading Steps
+
+1. Click the **palette icon** in the toolbar.
+2. Select your `colors.csv` file.
+3. Matching class names in the active dataset immediately update to the specified colors, in both the point cloud and the HUD legend.
+
+#### Precedence
+
+A loaded `colors.csv` override takes priority over both the built-in color table and the deterministically generated fallback, for any class name it matches.
+
+#### Validation Against the Loaded Dataset
+
+- If you load `colors.csv` before loading any dataset, override validation is deferred — the Console logs that overrides were applied but can't be checked yet. Once you load a CSV, those overrides are automatically re-validated against the new dataset's actual classes.
+- If you load `colors.csv` while a dataset is already active, any class name in the file that doesn't match a class in that dataset is flagged in the Console as unmatched (a warning, not an error — the load still succeeds).
+
+#### Error Handling
+
+Once the file's headers are recognized, individual rows are skipped (rather than failing the whole file) if the class name is empty, the color value is empty, or the color doesn't match the expected format. Skipped rows are reported in the **Console**, the same way dataset CSV row exclusions are reported.
+
 ---
 
 ## 8. Troubleshooting
@@ -438,15 +478,17 @@ This is expected behavior for a **2D dataset** (one with no Z-axis column mapped
 
 ### Toolbar Shortcuts
 
-| Icon              | Click Action                  |
-| ----------------- | ----------------------------- |
-| 📎 Paperclip      | Load CSV file                 |
-| 🔄 Reset          | Return pivot to origin        |
-| ✋ Hand / Pointer | Toggle Orbit vs Pan mode      |
-| 📊 Data           | Open Data filters page        |
-| ⊞ Grid            | Open Grid display page        |
-| ☐ Box             | Open Isolate octant page      |
-| ▶\_ Terminal      | Open Console diagnostics page |
+| Icon               | Click Action                     |
+| ------------------ | -------------------------------- |
+| 🌙 / ☀️ Moon / Sun | Toggle dark / light mode         |
+| 📎 Paperclip       | Load CSV file                    |
+| 🎨 Palette         | Load `colors.csv` color override |
+| 🔄 Reset           | Return pivot to origin           |
+| ✋ Hand / Pointer  | Toggle Orbit vs Pan mode         |
+| 🗄️ Data            | Open Data filters page           |
+| ⊞ Grid             | Open Grid display page           |
+| ☐ Isolate          | Open Isolate octant page         |
+| ▶\_ Terminal       | Open Console diagnostics page    |
 
 ![Bottom HUD showing keyboard controls and class color legend](docs/images/hud.jpg)
 
