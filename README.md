@@ -94,7 +94,7 @@ See [USER_GUIDE.md's "Loading Your Own CSV Dataset"](USER_GUIDE.md#7-loading-you
 
 ## Tactical Navigation
 
-WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot/tilt guardrails against runaway camera movement.
+WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot guardrails and stuck-key protection against runaway camera movement.
 
 See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference, including [2D Mode](USER_GUIDE.md#46-2d-mode) behavior.
 
