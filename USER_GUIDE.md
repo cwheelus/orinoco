@@ -201,7 +201,7 @@ Drag the border between the icon strip and the viewport to resize the content pa
 | 📎 Paperclip      | Open file picker to load a CSV                                                                                            |
 | 🔄 Reset          | Return pivot to origin                                                                                                    |
 | ✋ Hand / Pointer | Switch mouse drag between Orbit (rotate) and Pan (translate)                                                              |
-| 📊 Data           | Open Data page (filters, point sizing)                                                                                    |
+| 📊 Data           | Open Data page (filters, point sizing, point opacity)                                                                     |
 | ⊞ Grid            | Open Grid page (scaling, tick density, tick labels, grid visibility)                                                      |
 | ☐ Box             | Open Isolate page (octant gizmo) — lights up when an octant is isolated                                                   |
 | ▶\_ Terminal      | Open the Console page (session diagnostics) — lights up with an unreviewed-issue badge when an error or warning is logged |
@@ -240,6 +240,13 @@ Filter points by value range on any axis:
 Points render with partial transparency, so overlapping or closely-clustered observations remain visible instead of merging into a single solid shape. This is especially noticeable when many points share the same or similar coordinates — for example, when two identical columns are mapped to the same axis, or when a dataset has several observations with very close values.
 
 Where points overlap, you'll see a darker or more saturated blend of their colors — this is a visual cue that multiple observations exist at that location, not a rendering error. Points always render at their exact plotted coordinates; transparency only changes how they're drawn, never where the data actually sits.
+
+- **Opacity slider:** Sets how solid points are, from 15% (faint) to 100% (fully opaque). It starts at 50%.
+- **Lower it** on a dense cloud, where you care about where observations pile up — overlaps read as brighter, more saturated blends.
+- **Raise it to 100%** on sparse data, where nothing overlaps and full-strength color is easier to read against the grid. At 100% points are fully solid and nearer points cleanly hide farther ones.
+- **Reset:** One-click return to the starting 50%.
+
+The floor is 15% rather than 0% on purpose: a fully invisible cloud is impossible to tell apart from a dataset that failed to load.
 
 ### Grid Page
 
@@ -393,6 +400,12 @@ This is expected behavior for a **2D dataset** (one with no Z-axis column mapped
 - Open the **Data page** in the toolbar.
 - Adjust the **Point Size** slider.
 - Click **Reset** to return to automatic density-based sizing.
+
+### Points look washed out, or overlapping points are hard to tell apart
+
+- Open the **Data page** in the toolbar.
+- Adjust the **Point Opacity** slider: raise it toward 100% for solid, full-strength color on sparse data; lower it so dense overlaps read as a blend.
+- Click **Reset** to return to the default 50%.
 
 ### Axis labels show wrong names
 

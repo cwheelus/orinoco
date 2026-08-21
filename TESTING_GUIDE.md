@@ -387,7 +387,7 @@ Testing convention: assert `error.appCode?.code === CODES.SOME_CODE.code`, not t
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 3D scene rendering                  | Requires a headless WebGL/browser setup (for example, Playwright); not currently in scope                                                                                                                                          |
 | Camera behavior (`CameraRig.tsx`)   | Entangled with Three.js per-frame state, not isolated into pure functions                                                                                                                                                          |
-| React component rendering generally | `@testing-library/react` and jsdom are available but unused for component rendering; `passesNumeric` and `truncateLabel` were extracted specifically so their logic could be tested without rendering the components that use them |
+| React component rendering generally | `@testing-library/react` and jsdom are available but unused for component rendering; `passesNumeric`, `isVisible`, and `truncateLabel` were extracted specifically so their logic could be tested without rendering the components that use them |
 | Visual/layout defects               | Identified and corrected through manual browser testing; Vitest does not render pixels                                                                                                                                             |
 | Zustand store actions individually  | Mostly thin wrappers around already-tested logic                                                                                                                                                                                   |
 
@@ -408,8 +408,10 @@ A passing `npm test` run does not indicate the application is fully verified —
 | `logIds.test.ts`          | 4     | Console log-id monotonicity across clears and ring-buffer trimming (#58)                                                                             |
 | `gridSpace.test.ts`       | 24    | `computeGridSpace`'s three scaling modes, octant isolation, `toRenderSpace`, `ZERO_RENDER`, and `inOctant`'s zero-boundary partitioning (#64 Tier 1) |
 | `classColors.test.ts`     | 13    | `getClassColor`'s precedence chain (override > built-in > generated), determinism, edge cases, and hex return format (#64 Tier 1)                    |
+| `isVisible.test.ts`       | 18    | Hidden-class filtering and how it composes (AND) with the per-axis numeric filters and octant isolation (#64 Tier 1)                                 |
+| `config.test.ts`          | 42    | Every `validate()` rule in `config.ts`, its aggregated error message, and the shipped `config.json` itself (#64 Tier 1)                              |
 
-118 tests total.
+178 tests total.
 
 ---
 

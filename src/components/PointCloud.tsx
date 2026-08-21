@@ -2,9 +2,13 @@ import { useMemo, useRef, useLayoutEffect } from "react";
 import * as THREE from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useStore } from "../store/useStore";
-import type { DataPoint, NumericFilter } from "../store/useStore";
+import type {
+  DataPoint,
+  NumericFilter,
+  NumericFilters,
+} from "../store/useStore";
 import { getClassColor } from "../lib/classColors";
-import { inOctant } from "../lib/gridSpace";
+import { inOctant, type OctantSign } from "../lib/gridSpace";
 import { config } from "../lib/config";
 
 // Auto point-size model, tunable via config.json's `points` section.
@@ -80,6 +84,36 @@ export function passesNumeric(value: number, f: NumericFilter): boolean {
   }
 }
 
+// The whole visibility rule for one point, in one place: a point is
+// drawn only if its class isn't hidden, it satisfies every active axis
+// filter, and it falls inside the isolated octant (if any).
+//
+// The three filters are independent and combine as AND — hiding a class
+// never reveals a point some numeric filter excluded, and clearing a
+// numeric filter never reveals a hidden class's points. Extracted from
+// the render loop below (like passesNumeric above) so that rule is
+// testable without mounting a WebGL scene — see
+// lib/__tests__/isVisible.test.ts (#64 Tier 1).
+//
+// `hidden` is a Set rather than the store's array because this runs
+// once per point per filter change: on a 100k-row dataset an
+// Array.includes scan would make class hiding O(points × classes).
+export function isVisible(
+  p: DataPoint,
+  hidden: ReadonlySet<string>,
+  filters: NumericFilters,
+  isolatedOctant: OctantSign | null,
+): boolean {
+  if (hidden.has(p.className)) return false;
+
+  if (!passesNumeric(p.x, filters.x)) return false;
+  if (!passesNumeric(p.y, filters.y)) return false;
+  if (!passesNumeric(p.z, filters.z)) return false;
+
+  // Octant isolation hides everything outside the selected corner.
+  return inOctant(p, isolatedOctant);
+}
+
 // Scratch objects reused across the whole matrix-fill loop, so building
 // 100k instance matrices allocates nothing per point.
 const scratchObject = new THREE.Object3D();
@@ -97,6 +131,7 @@ export function PointCloud() {
   const setHoveredPoint = useStore((state) => state.setHoveredPoint);
   const setPivot = useStore((state) => state.setPivot);
   const pointSizeScale = useStore((state) => state.pointSizeScale);
+  const pointOpacity = useStore((state) => state.pointOpacity);
   const hiddenClasses = useStore((state) => state.hiddenClasses);
   const numericFilters = useStore((state) => state.numericFilters);
   const isolatedOctant = useStore((state) => state.isolatedOctant);
@@ -146,13 +181,7 @@ export function PointCloud() {
     for (let i = 0; i < dataPoints.length; i++) {
       const p = dataPoints[i];
 
-      if (hidden.has(p.className)) continue;
-      if (!passesNumeric(p.x, numericFilters.x)) continue;
-      if (!passesNumeric(p.y, numericFilters.y)) continue;
-      if (!passesNumeric(p.z, numericFilters.z)) continue;
-
-      // Octant isolation hides everything outside the selected corner.
-      if (!inOctant(p, isolatedOctant)) continue;
+      if (!isVisible(p, hidden, numericFilters, isolatedOctant)) continue;
 
       points.push(p);
       pts.push(positions[i]);
@@ -244,16 +273,25 @@ export function PointCloud() {
       {/* One sphere shared by every instance; its radius IS the point
           size, so the size slider is an O(1) geometry swap. */}
       <sphereGeometry args={[pointRadius, SPHERE_SEGMENTS, SPHERE_SEGMENTS]} />
-      {/* Semi-transparent so overlapping/coincident points remain
-          visually distinguishable instead of merging into one solid
-          shape — see #67. depthWrite={false} stops each transparent
-          instance from writing to the depth buffer, which would
-          otherwise let a nearer instance incorrectly hide a farther
+      {/* Alpha comes from the Data page's opacity slider. Below 1,
+          overlapping/coincident points remain visually distinguishable
+          instead of merging into one solid shape — see #67 — and
+          depthWrite is turned OFF, because a transparent instance that
+          writes depth lets a nearer instance incorrectly hide a farther
           one drawn after it. This does NOT make blending strictly
-          back-to-front — instances still blend in draw order, which
-          is acceptable for uniform, small spheres. Worth revisiting
-          if this material is ever used for meshes of mixed size. */}
-      <meshStandardMaterial transparent opacity={0.5} depthWrite={false} />
+          back-to-front: instances still blend in draw order, which is
+          acceptable for uniform, small spheres. Worth revisiting if
+          this material is ever used for meshes of mixed size.
+
+          At exactly 1 the material goes back to fully opaque with
+          depth writing ON, so the analyst gets correct, cheap depth
+          sorting rather than order-dependent blending of alpha-1
+          fragments. */}
+      <meshStandardMaterial
+        transparent={pointOpacity < 1}
+        opacity={pointOpacity}
+        depthWrite={pointOpacity >= 1}
+      />
     </instancedMesh>
   );
 }
