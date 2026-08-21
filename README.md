@@ -96,7 +96,7 @@ See [USER_GUIDE.md's "Loading Your Own CSV Dataset"](USER_GUIDE.md#7-loading-you
 
 WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot/tilt guardrails against runaway camera movement.
 
-See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference and 2D mode behavior.
+See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference, and [Troubleshooting](USER_GUIDE.md#8-troubleshooting) for 2D-locked camera behavior.
 
 ---
 
@@ -143,7 +143,7 @@ Built-in classification colors:
 | `qc`       | `#00dd00` |
 | `zt`       | `#0000dd` |
 
-A loaded CSV's own class values inherit these colors where names match. Any other class gets a color generated deterministically from its name — the same class name always produces the same color, on every reload and every dataset.
+A loaded CSV's own class values inherit these colors where names match. Any other class gets a color generated deterministically from its name — the same class name always produces the same color, on every reload and every dataset. A loaded `colors.csv` file overrides both the built-in and generated colors for any class name it matches — see **Diagnostics Console** below.
 
 ---
 
