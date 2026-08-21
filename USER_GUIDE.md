@@ -12,6 +12,7 @@ _Last updated: August 2026_
 2. [Prerequisites](#2-prerequisites)
 3. [Quick Start](#3-quick-start)
 4. [Navigating the 3D Scene](#4-navigating-the-3d-scene)
+   - [2D Mode](#46-2d-mode)
 5. [Inspecting Data Points](#5-inspecting-data-points)
 6. [Using the Toolbar](#6-using-the-toolbar)
    - [Data Page](#data-page)
@@ -151,6 +152,17 @@ Orinoco enforces soft limits to prevent losing the camera:
 - **Zoom limits:** The camera cannot move closer than **0.15 units** or farther than **18 units** from the pivot
 - **Pivot bounds:** The pivot cannot be moved more than **50% beyond the grid walls** (prevents wandering into empty space)
 - **Stuck-key protection:** Taking screenshots with OS shortcuts (e.g., macOS Cmd+Shift+4) automatically releases all held keys
+
+### 4.6 2D Mode
+
+When a loaded dataset has no Z-axis column mapped (see **7.4 Manual Axis Mapping**), Orinoco automatically switches to a locked, flat top-down camera:
+
+- **Orbit (A/D) and Depth (W/S) are disabled.** The camera stays fixed relative to the pivot on the X/Y plane; these keys have no effect while 2D mode is active.
+- **Arrow keys remap.** With no Z axis to traverse, **↑ / ↓** move the pivot along the **Y axis** instead of Z. **Space** and **Shift** also continue to move the pivot along Y.
+- **Mouse orbit is disabled**, for the same reason as A/D above — dragging to rotate the camera has no effect in 2D mode.
+- On switching from a 3D to a 2D dataset, the camera snaps to a flat, top-down view automatically, preserving its current distance from the pivot.
+
+See **Section 8, "I can't orbit or tilt the camera — it's locked flat"** for what this looks like in practice and how to return to 3D.
 
 ---
 

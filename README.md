@@ -96,7 +96,7 @@ See [USER_GUIDE.md's "Loading Your Own CSV Dataset"](USER_GUIDE.md#7-loading-you
 
 WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot/tilt guardrails against runaway camera movement.
 
-See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference, and [Troubleshooting](USER_GUIDE.md#8-troubleshooting) for 2D-locked camera behavior.
+See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference, including [2D Mode](USER_GUIDE.md#46-2d-mode) behavior.
 
 ---
 
@@ -584,7 +584,7 @@ Every loaded dataset, whether fetched at startup or picked from the toolbar, sha
 
 Column-to-axis mapping is produced by `parseCSV.ts`'s auto-detection — see **Dynamic Dataset Loading**.
 
-Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) gets a color generated deterministically from its name, rather than failing.
+Classification colors are shared by both the point cloud rendering and the HUD legend, with unmatched classes assigned a color automatically rather than failing.
 
 ---
 
