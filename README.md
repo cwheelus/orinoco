@@ -2,7 +2,7 @@
 
 Project Orinoco is a browser-native 3D visualization tool for exploring network telemetry. It projects selected traffic features into a three-dimensional Cartesian space, allowing analysts to inspect individual observations, navigate spatial relationships, and investigate clusters interactively.
 
-The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV matching the expected shape (at least two numeric columns, one or two text columns) can be loaded directly in-browser via the toolbar — the application starts blank, with no bundled or auto-loaded dataset.
+The application visualizes network flow features within a symmetric, signed 3D Cartesian coordinate system — every axis runs through the origin, so data-zero is always visible regardless of whether the loaded dataset is all-positive, all-negative, or mixed. Analysts can navigate the environment, inspect individual data points, isolate a spatial octant for focused analysis, and dynamically adjust their exploration viewpoint through an interactive pivot system. Camera movement is always relative to the active pivot. Any CSV containing at least two numeric columns and at least one text column can be loaded directly in-browser via the toolbar — the application starts blank, with no bundled or auto-loaded dataset.
 
 ---
 
@@ -94,9 +94,9 @@ See [USER_GUIDE.md's "Loading Your Own CSV Dataset"](USER_GUIDE.md#7-loading-you
 
 ## Tactical Navigation
 
-WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot/tilt guardrails against runaway camera movement.
+WASD orbit/dolly, arrow-key/space/shift pivot traversal, and mouse orbit/pan/click-to-pivot — with a locked, flat top-down camera for 2D (Z-less) datasets, plus zoom/pivot guardrails and stuck-key protection against runaway camera movement.
 
-See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference and 2D mode behavior.
+See [USER_GUIDE.md's "Navigating the 3D Scene"](USER_GUIDE.md#4-navigating-the-3d-scene) for the full keyboard/mouse reference, including [2D Mode](USER_GUIDE.md#46-2d-mode) behavior.
 
 ---
 
@@ -143,7 +143,7 @@ Built-in classification colors:
 | `qc`       | `#00dd00` |
 | `zt`       | `#0000dd` |
 
-A loaded CSV's own class values inherit these colors where names match. Any other class gets a color generated deterministically from its name — the same class name always produces the same color, on every reload and every dataset.
+A loaded CSV's own class values inherit these colors where names match. Any other class gets a color generated deterministically from its name — the same class name always produces the same color, on every reload and every dataset. A loaded `colors.csv` file overrides both the built-in and generated colors for any class name it matches — see **Diagnostics Console** below.
 
 ---
 
@@ -195,7 +195,7 @@ Isolation clears automatically whenever a new CSV loads, since an octant chosen 
 
 ## Toolbar
 
-A Blender-style docked side panel — an icon strip for Data, Grid, Isolate, and Console pages, plus a resizable content pane for each page's controls.
+A Blender-style docked side panel with an icon strip providing access to visualization, data, navigation, and application controls, plus a resizable content pane for the selected control.
 
 See [USER_GUIDE.md's "Using the Toolbar"](USER_GUIDE.md#6-using-the-toolbar) for the full icon reference and each page's controls.
 
@@ -370,7 +370,6 @@ orinoco/
 │   │   │   └── Auto-detecting CSV parser — classifies columns,
 │   │   │       maps them to X/Y/Z/uid/class, validates and reports errors
 │   │   └── parseColorsCSV.ts
-│   │   ├── parseColorsCSV.ts
 │   │   │   └── Parses a colors.csv override file, mapping class names
 │   │   │       to hex colors with flexible header matching
 │   │   ├── colorValidation.ts
@@ -394,9 +393,7 @@ orinoco/
 │   │       and grid math so the shape is defined exactly once
 │   │
 │   ├── App.tsx
-│   │   └── Application shell, Canvas, HUD, CSV-load orchestration,
-│   │       and mount-time loading of the bundled sample via the
-│   │       CSV pipeline
+│   │   └── Application shell, Canvas, HUD, and CSV-load orchestration
 │   │
 │   ├── main.tsx
 │   │   └── React entry point
@@ -575,7 +572,7 @@ Icon library used for interface elements, including the toolbar's icon strip (pa
 
 # Data Configuration
 
-The application bundles no dataset at all — not a static `data.json`, and not a sample CSV. It opens on an empty grid and waits for the analyst to load a file (#57). A deployer who wants a dataset loaded on open points `data.sampleDataset` (in `config.json`) at a path or URL the browser can fetch; that file goes through the same `parseCSV → setDataPoints` pipeline a manual upload does, so there is no separate hardcoded-data code path either way.
+The application does not bundle a dataset. It opens on an empty grid and waits for the analyst to load a CSV. A deployer who wants a dataset loaded on open can point `data.sampleDataset` (in `config.json`) at a path or URL the browser can fetch; that file goes through the same `parseCSV → setDataPoints` pipeline a manual upload does, so there is no separate hardcoded-data code path either way.
 
 Every loaded dataset, whether fetched at startup or picked from the toolbar, shares the same internal shape:
 
@@ -591,16 +588,7 @@ Every loaded dataset, whether fetched at startup or picked from the toolbar, sha
 
 Column-to-axis mapping is produced by `parseCSV.ts`'s auto-detection — see **Dynamic Dataset Loading**.
 
-Built-in visualization categories:
-
-| Data Value | Color     |
-| ---------- | --------- |
-| `normal`   | `#dddddd` |
-| `nss`      | `#dd0000` |
-| `qc`       | `#00dd00` |
-| `zt`       | `#0000dd` |
-
-Classification colors are defined in `src/lib/classColors.ts`, shared by both the point cloud rendering and the HUD legend so they can't drift out of sync. Any class value not present in this mapping (e.g. from a loaded CSV with new categories) gets a color generated deterministically from its name, rather than failing.
+Classification colors are shared by both the point cloud rendering and the HUD legend, with unmatched classes assigned a color automatically rather than failing.
 
 ---
 
@@ -684,9 +672,9 @@ Runs the automated Vitest suite (118 tests covering CSV/color-file parsing, filt
 
 ## Test Data
 
-The app ships with no dataset (#57) — supply your own CSV through the toolbar's paperclip icon.
+The application ships without a dataset. Supply a CSV through the toolbar's paperclip icon, or configure an optional startup dataset through `data.sampleDataset` in `config.json`.
 
-Fixtures for manually exercising the loader's REJECTION paths live in `sample-data/`:
+Fixtures for manually exercising the loader's rejection paths are provided in `sample-data/`:
 
 | File                 | Purpose                                                                                                                        |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -721,7 +709,7 @@ Pulled directly from [package.json](package.json)
 
 See the [Issues tab](https://github.com/cwheelus/orinoco/issues) for planned work and open feature requests.
 
-- **Retake README screenshots** — the Screenshots section still shows placeholders (`main.png`, `data_info.png`) predating the signed-grid/octant-isolation rework (#42). Needs fresh captures of the main visualization view and the Point Analysis HUD, ideally also covering newer UI (2D camera lock, Diagnostics Console) not shown in any current screenshot.
+- **Update README screenshots** — replace the placeholder `main.png` and `data_info.png` images with current captures reflecting the signed-grid and octant-isolation interface, along with newer features such as 2D camera lock and the Diagnostics Console.
 
 ---
 
