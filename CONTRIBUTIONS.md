@@ -8,7 +8,7 @@ This document records each developer's contributions to Project Orinoco, sourced
 - **Repository:** [cwheelus/orinoco](https://github.com/cwheelus/orinoco)
 - **Source:** GitHub pull request and issue history (`gh` CLI, cwheelus/orinoco)
 - **Total Merged Pull Requests Recorded:** 33
-- **Total Open Issues Recorded:** 1
+- **Total Open Issues Recorded:** 3
 
 > **Note:** Some features reflect iterative, collaborative work across multiple pull requests and both developers — for example, the signed grid and octant-isolation system was built collaboratively across several PRs (#37, #42, #63). Attribution below reflects the developer who authored and merged each specific pull request, not sole ownership of the underlying feature area.
 
