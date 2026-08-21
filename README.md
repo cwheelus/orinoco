@@ -201,11 +201,15 @@ See [USER_GUIDE.md's "Using the Toolbar"](USER_GUIDE.md#6-using-the-toolbar) for
 
 ---
 
-## Data Filtering & Point Sizing
+## Data Filtering & Point Appearance
 
-Class-visibility toggles, per-axis numeric range filters, and density-based point sizing — all rendered as a single instanced mesh, so filtering never remounts or reallocates.
+Class-visibility toggles, per-axis numeric range filters, density-based point sizing, and a point-opacity slider — all rendered as a single instanced mesh, so filtering never remounts or reallocates.
 
-See [USER_GUIDE.md's Data Page section](USER_GUIDE.md#data-page) for the full filter and sizing controls.
+A point is drawn only if its class isn't hidden, it satisfies every active axis filter, and it falls inside the isolated octant — one rule (`isVisible()` in `PointCloud.tsx`), applied per point, so the three controls always compose the same way.
+
+Opacity is analyst-controlled between 15% and 100% (`config.json`'s `limits.pointOpacitySlider`), starting at `defaults.pointOpacity`. Below 100% points blend where they overlap; at exactly 100% the material goes fully opaque with depth writing back on, so nearer points cleanly occlude farther ones.
+
+See [USER_GUIDE.md's Data Page section](USER_GUIDE.md#data-page) for the full filter, sizing, and opacity controls.
 
 ---
 
@@ -594,7 +598,7 @@ Most values that would otherwise be hardcoded — grid dimensions, point sizing,
 
 - Vite inlines `config.json` at build time, so changes require a dev-server restart or rebuild to take effect
 - The config's shape is validated at module load — a value that's the right type but a nonsensical setting (e.g. an inverted zoom range, a negative point count) throws a clear error immediately rather than surfacing later as a subtle rendering bug
-- This is aimed at deployment-time tuning, not runtime user preference — the Toolbar's own sliders (point size, tick density) still control per-session values within whatever range `config.json` allows
+- This is aimed at deployment-time tuning, not runtime user preference — the Toolbar's own sliders (point size, point opacity, tick density) still control per-session values within whatever range `config.json` allows
 
 ---
 
@@ -727,8 +731,8 @@ Project Orinoco is a functional MVP demonstrating:
 - Instanced point rendering with count-adaptive sizing for large datasets
 - Real-time metadata inspection, labeled with the active dataset's real column names
 - SOC-style analyst interface
-- Semi-transparent point rendering, so overlapping or closely-clustered observations remain visually distinguishable instead of merging into a single shape
-- An automated Vitest regression suite (118 tests) covering CSV/color-file parsing, numeric filters, display truncation, the error-code type guard, Console log-id behavior, grid geometry, and classification-color resolution — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- Semi-transparent point rendering with an analyst-controlled opacity slider (15–100%), so overlapping or closely-clustered observations remain visually distinguishable instead of merging into a single shape
+- An automated Vitest regression suite (178 tests) covering CSV/color-file parsing, numeric filters, display truncation, the error-code type guard, Console log-id behavior, grid geometry, classification-color resolution, point-visibility filtering, and `config.json` validation — see [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ---
 

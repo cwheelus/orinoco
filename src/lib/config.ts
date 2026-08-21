@@ -150,6 +150,13 @@ export interface AppConfig {
     activeTool: ActiveToolName;
     scalingMode: ScalingModeName;
     pointSizeScale: number;
+    /**
+     * Starting alpha of every point, 0-1. Below 1 makes overlapping or
+     * coincident points readable as a blend rather than one solid
+     * shape (#67); 1 renders them fully opaque. The analyst can retune
+     * this live with the Data page's opacity slider.
+     */
+    pointOpacity: number;
     tickDensity: number;
     /**
      * Axis names shown when no dataset is loaded. Since the app no
@@ -166,6 +173,13 @@ export interface AppConfig {
   limits: {
     /** Range and granularity of the Data page's point-size slider. */
     pointSizeSlider: SliderLimits;
+    /**
+     * Range and granularity of the Data page's point-opacity slider.
+     * Keep `max` at or below 1 and `min` above 0 — an alpha of 0 would
+     * let an analyst render the cloud invisible and read it as a
+     * broken load.
+     */
+    pointOpacitySlider: SliderLimits;
     /** Range and granularity of the Grid page's tick-density slider. */
     tickDensitySlider: SliderLimits;
   };
@@ -219,8 +233,14 @@ const config = rawConfig as AppConfig;
  *
  * Throws at module load, so a bad config fails loudly on first paint
  * rather than degrading somewhere deep in a frame loop.
+ *
+ * EXPORTED so the rules can be tested directly against synthetic
+ * configs (#64 Tier 1). It is called once below with the real
+ * config.json; nothing in the app calls it again, and it holds no
+ * state, so exporting it costs nothing but makes each rule reachable
+ * from a test without shipping a deliberately broken config.json.
  */
-function validate(c: AppConfig): void {
+export function validate(c: AppConfig): void {
   const problems: string[] = [];
 
   const positive = (path: string, v: number) => {
@@ -285,6 +305,7 @@ function validate(c: AppConfig): void {
   for (const [name, slider] of [
     ["limits.pointSizeSlider", limits.pointSizeSlider],
     ["limits.tickDensitySlider", limits.tickDensitySlider],
+    ["limits.pointOpacitySlider", limits.pointOpacitySlider],
   ] as const) {
     ordered(name, slider.min, slider.max);
     positive(`${name}.step`, slider.step);
@@ -302,6 +323,22 @@ function validate(c: AppConfig): void {
   if (defaults.tickDensity < tdMin || defaults.tickDensity > tdMax) {
     problems.push(
       `defaults.tickDensity (${defaults.tickDensity}) is outside limits.tickDensitySlider [${tdMin}, ${tdMax}]`,
+    );
+  }
+
+  // Alpha is a fraction by definition, and a fully transparent cloud
+  // is indistinguishable from a failed load — so the range is checked
+  // on its own, not just against whatever the slider allows.
+  if (!(limits.pointOpacitySlider.min > 0)) {
+    problems.push("limits.pointOpacitySlider.min must be greater than 0");
+  }
+  if (limits.pointOpacitySlider.max > 1) {
+    problems.push("limits.pointOpacitySlider.max cannot exceed 1");
+  }
+  const { min: poMin, max: poMax } = limits.pointOpacitySlider;
+  if (defaults.pointOpacity < poMin || defaults.pointOpacity > poMax) {
+    problems.push(
+      `defaults.pointOpacity (${defaults.pointOpacity}) is outside limits.pointOpacitySlider [${poMin}, ${poMax}]`,
     );
   }
 
